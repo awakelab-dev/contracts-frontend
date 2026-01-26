@@ -8,6 +8,7 @@ import VacanciesListPage from "./pages/VacanciesListPage";
 import VacancyDetailPage from "./pages/VacancyDetailPage";
 import MatchingPage from "./pages/MatchingPage";
 import InvitationsPage from "./pages/InvitationsPage";
+import InterviewsListPage from "./pages/InterviewsListPage";
 import ImportPage from "./pages/ImportPage";
 import EmailTemplatesPage from "./pages/EmailTemplatesPage";
 import ReportsPage from "./pages/ReportsPage";
@@ -40,6 +41,7 @@ export default function App() {
           <Route path="vacancies" element={<VacanciesListPage />} />
           <Route path="vacancies/:id" element={<VacancyDetailPage />} />
           <Route path="matching" element={<MatchingPage />} />
+          <Route path="interviews" element={<InterviewsListPage />} />
           <Route path="invitations" element={<InvitationsPage />} />
           <Route path="import" element={<ImportPage />} />
           <Route path="emails" element={<EmailTemplatesPage />} />

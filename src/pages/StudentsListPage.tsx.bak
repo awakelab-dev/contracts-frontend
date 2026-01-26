@@ -1,9 +1,0 @@
-import { Box, Typography } from "@mui/material";
-export default function StudentsListPage() {
-  return (
-    <Box>
-      <Typography variant="h5">StudentsListPage</Typography>
-      <Typography color="text.secondary">Estructura inicial de la vista.</Typography>
-    </Box>
-  );
-}

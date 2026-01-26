@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Box,
   Paper,
@@ -16,73 +16,59 @@ import {
   Button,
 } from "@mui/material";
 import { Link as RouterLink } from "react-router-dom";
-
-type Vacancy = {
-  id: number;
-  title: string;
-  company: string;
-  sector: string;
-};
-
-type MatchRow = {
-  studentId: number;
-  fullName: string;
-  courseCode: string;
-  score: number; // 0-100
-  status: "eligible" | "borderline" | "low";
-};
-
-const VACANCIES: Vacancy[] = [
-  { id: 1, title: "Camarero/a terraza fin de semana", company: "R. PARAGUAS", sector: "Hostelería" },
-  { id: 2, title: "Runner restaurante alta gama", company: "TATEL", sector: "Hostelería" },
-  { id: 3, title: "Dependiente/a tienda urbana", company: "SNIPES ROPA", sector: "Comercio" },
-];
-
-const MATCHES_BY_VACANCY: Record<number, MatchRow[]> = {
-  1: [
-    { studentId: 1, fullName: "ANTHONY JOSUE BRUFAU MODESTO", courseCode: "EMHA 01", score: 92, status: "eligible" },
-    { studentId: 4, fullName: "JEROME MICHAEL MASONGSONG", courseCode: "EMHA 01", score: 88, status: "eligible" },
-    { studentId: 10, fullName: "SOFIA AGUILAR LUQUE", courseCode: "EMHA 01", score: 81, status: "eligible" },
-    { studentId: 2, fullName: "DELIA FERNANDINO LÓPEZ", courseCode: "EMHA 01", score: 65, status: "borderline" },
-  ],
-  2: [
-    { studentId: 4, fullName: "JEROME MICHAEL MASONGSONG", courseCode: "EMHA 01", score: 95, status: "eligible" },
-    { studentId: 7, fullName: "PATRICIA IBELIA BECERRA GRANDA", courseCode: "EMHA 01", score: 78, status: "borderline" },
-  ],
-  3: [
-    { studentId: 2, fullName: "DELIA FERNANDINO LÓPEZ", courseCode: "EMHA 01", score: 84, status: "eligible" },
-    { studentId: 3, fullName: "ESTEFANY QUIÑOY IBÁÑEZ", courseCode: "EMHA 01", score: 60, status: "borderline" },
-  ],
-};
-
-function scoreColor(score: number) {
-  if (score >= 85) return "success";
-  if (score >= 70) return "primary";
-  return "warning";
-}
-
-function statusChip(status: MatchRow["status"]) {
-  switch (status) {
-    case "eligible":
-      return <Chip label="Alta afinidad" color="success" size="small" />;
-    case "borderline":
-      return <Chip label="Afinidad media" color="warning" size="small" />;
-    default:
-      return <Chip label="Baja afinidad" size="small" />;
-  }
-}
+import api from "../lib/api";
+import type { Student, Vacancy, Company } from "../types";
+import { computeMatchingScore, scoreColor } from "../utils/MatchingEngine";
 
 export default function MatchingPage() {
-  const [vacancyId, setVacancyId] = useState<number>(1);
+  const [vacancies, setVacancies] = useState<Vacancy[]>([]);
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [students, setStudents] = useState<Student[]>([]);
+  const [vacancyId, setVacancyId] = useState<number | "">("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const vacancy = useMemo(
-    () => VACANCIES.find((v) => v.id === vacancyId) ?? VACANCIES[0],
-    [vacancyId]
+  useEffect(() => {
+    let cancel = false;
+    setLoading(true);
+    setError(null);
+    Promise.all([
+      api.get<Vacancy[]>("/vacancies"),
+      api.get<Student[]>("/students"),
+      api.get<Company[]>("/companies"),
+    ])
+      .then(([vRes, sRes, cRes]) => {
+        if (cancel) return;
+        const v = Array.isArray(vRes.data) ? vRes.data : [];
+        setVacancies(v);
+        setStudents(Array.isArray(sRes.data) ? sRes.data : []);
+        setCompanies(Array.isArray(cRes.data) ? cRes.data : []);
+        if (!vacancyId && v.length) setVacancyId(v[0].id);
+      })
+      .catch((e) => setError(e?.response?.data?.message || e?.message || "Error al cargar datos de matching"))
+      .finally(() => { if (!cancel) setLoading(false); });
+    return () => { cancel = true; };
+  }, []);
+
+  const companyName = useMemo(() => {
+    const m = new Map<number, string>();
+    companies.forEach((c) => m.set(c.id, c.name));
+    return m;
+  }, [companies]);
+
+  const selectedVacancy = useMemo(
+    () => vacancies.find((v) => v.id === Number(vacancyId)) || null,
+    [vacancies, vacancyId]
   );
-  const rows = useMemo(
-    () => MATCHES_BY_VACANCY[vacancy?.id ?? 1] ?? [],
-    [vacancy?.id]
-  );
+
+  const rows = useMemo(() => {
+    if (!selectedVacancy) return [] as { student: Student; score: number }[];
+    return students
+      .map((s) => ({ student: s, score: computeMatchingScore(s, selectedVacancy) }))
+      .filter((x) => x.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 20);
+  }, [students, selectedVacancy]);
 
   return (
     <Box>
@@ -99,78 +85,67 @@ export default function MatchingPage() {
             onChange={(e) => setVacancyId(Number(e.target.value))}
             size="small"
             sx={{ minWidth: 260 }}
+            disabled={loading || !!error}
           >
-            {VACANCIES.map((v) => (
+            {vacancies.map((v) => (
               <MenuItem key={v.id} value={v.id}>
-                {v.title} — {v.company}
+                {v.title} — {companyName.get(v.company_id) || `Empresa #${v.company_id}`}
               </MenuItem>
             ))}
           </TextField>
-          <Stack spacing={0.5}>
-            <Typography variant="body2">
-              <strong>Empresa:</strong> {vacancy.company}
-            </Typography>
-            <Typography variant="body2">
-              <strong>Sector:</strong> {vacancy.sector}
-            </Typography>
-          </Stack>
+          {selectedVacancy && (
+            <Stack spacing={0.5}>
+              <Typography variant="body2"><strong>Empresa:</strong> {companyName.get(selectedVacancy.company_id) || `#${selectedVacancy.company_id}`}</Typography>
+              <Typography variant="body2"><strong>Sector:</strong> {selectedVacancy.sector ?? '-'}</Typography>
+            </Stack>
+          )}
         </Stack>
       </Paper>
 
       <Paper sx={{ p: 2 }}>
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell>Candidato</TableCell>
-              <TableCell>Curso</TableCell>
-              <TableCell>Score</TableCell>
-              <TableCell>Detalle score</TableCell>
-              <TableCell>Estado</TableCell>
-              <TableCell align="right">Acciones</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {rows.map((r) => (
-              <TableRow key={r.studentId} hover>
-                <TableCell>{r.fullName}</TableCell>
-                <TableCell>{r.courseCode}</TableCell>
-                <TableCell width={200}>
-                  <Stack spacing={0.5}>
-                    <Typography variant="body2">{r.score} / 100</Typography>
-                    <LinearProgress
-                      variant="determinate"
-                      value={r.score}
-                      color={scoreColor(r.score) as any}
-                    />
-                  </Stack>
-                </TableCell>
-                <TableCell>
-                  <Typography variant="caption" color="text.secondary">
-                    Coincidencia en curso/sector + disponibilidad
-                  </Typography>
-                </TableCell>
-                <TableCell>{statusChip(r.status)}</TableCell>
-                <TableCell align="right">
-                  <Button
-                    component={RouterLink}
-                    to={`/students/${r.studentId}`}
-                    size="small"
-                    variant="outlined"
-                  >
-                    Ver alumno
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-            {rows.length === 0 && (
+        {loading && <Typography align="center">Cargando…</Typography>}
+        {error && <Typography color="error" align="center">Error: {error}</Typography>}
+        {!loading && !error && (
+          <Table>
+            <TableHead>
               <TableRow>
-                <TableCell colSpan={6} align="center" sx={{ py: 4, color: "text.secondary" }}>
-                  No hay candidatos sugeridos para esta vacante
-                </TableCell>
+                <TableCell>Candidato</TableCell>
+                <TableCell>Curso</TableCell>
+                <TableCell>Score</TableCell>
+                <TableCell align="right">Acciones</TableCell>
               </TableRow>
-            )}
-          </TableBody>
-        </Table>
+            </TableHead>
+            <TableBody>
+              {rows.map(({ student, score }) => (
+                <TableRow key={student.id} hover>
+                  <TableCell>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <Typography>{student.full_name}</Typography>
+                      <Chip size="small" label={`${score}%`} color={scoreColor(score)} />
+                    </Stack>
+                  </TableCell>
+                  <TableCell>{student.course_code}</TableCell>
+                  <TableCell width={200}>
+                    <Stack spacing={0.5}>
+                      <Typography variant="body2">{score} / 100</Typography>
+                      <LinearProgress variant="determinate" value={score} color={scoreColor(score)} />
+                    </Stack>
+                  </TableCell>
+                  <TableCell align="right">
+                    <Button component={RouterLink} to={`/students/${student.id}`} size="small" variant="outlined">Ver alumno</Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+              {rows.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={4} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                    No hay candidatos sugeridos para esta vacante
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        )}
       </Paper>
     </Box>
   );

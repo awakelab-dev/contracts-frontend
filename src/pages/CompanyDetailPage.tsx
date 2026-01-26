@@ -1,28 +1,70 @@
 import { useParams, Link as RouterLink } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
 import { Box, Paper, Stack, Typography, Chip, Button } from "@mui/material";
-
-const DATA = [
-  { id: 1, name: "R. PARAGUAS", sector: "Hostelería", contactName: "RRHH", contactEmail: "rrhh@paraguas.fake", location: "Madrid", vacanciesOpen: 4, notes: "Grupo con varios restaurantes." },
-  { id: 2, name: "CONSTRUCCIONES GAHERJO, S.L.", sector: "Construcción", contactName: "Laura Gómez", contactEmail: "laura@gaherjo.fake", location: "Madrid", vacanciesOpen: 2 },
-  { id: 3, name: "SNIPES ROPA", sector: "Comercio", contactName: "Tienda Central", contactEmail: "seleccion@snipes.fake", location: "Madrid", vacanciesOpen: 1 },
-  { id: 4, name: "Restaurante Jose Luis", sector: "Hostelería", contactName: "Jefe de sala", contactEmail: "sala@joseluis.fake", location: "Madrid", vacanciesOpen: 3 },
-  { id: 5, name: "TATEL", sector: "Hostelería", contactName: "Reclutamiento", contactEmail: "jobs@tatel.fake", location: "Madrid", vacanciesOpen: 2 },
-];
+import api from "../lib/api";
+import type { Company, Vacancy } from "../types";
 
 export default function CompanyDetailPage() {
   const { id } = useParams();
-  const company = DATA.find((c) => String(c.id) === String(id));
+  const [company, setCompany] = useState<Company | null>(null);
+  const [vacancies, setVacancies] = useState<Vacancy[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  if (!company) {
+  useEffect(() => {
+    if (!id) return;
+    let cancel = false;
+    setLoading(true);
+    setNotFound(false);
+    setError(null);
+
+    Promise.all([
+      api.get<Company>(`/companies/${id}`),
+      api.get<Vacancy[]>(`/vacancies`),
+    ])
+      .then(([cRes, vRes]) => {
+        if (cancel) return;
+        setCompany(cRes.data);
+        setVacancies(Array.isArray(vRes.data) ? vRes.data : []);
+      })
+      .catch((err) => {
+        if (cancel) return;
+        const status = err?.response?.status;
+        if (status === 404) setNotFound(true);
+        else setError(err?.response?.data?.message || err?.message || "Error al cargar empresa");
+      })
+      .finally(() => {
+        if (cancel) return;
+        setLoading(false);
+      });
+
+    return () => {
+      cancel = true;
+    };
+  }, [id]);
+
+  const openCount = useMemo(() => {
+    if (!company) return 0;
+    return vacancies.filter((v) => v.company_id === company.id && v.status === "open").length;
+  }, [company, vacancies]);
+
+  if (loading) return <Typography>Cargando…</Typography>;
+  if (notFound)
     return (
       <Box>
-        <Typography variant="h6">Empresa no encontrada</Typography>
-        <Button component={RouterLink} to="/companies" sx={{ mt: 1 }}>
-          Volver a empresas
-        </Button>
+        <Typography variant="h6">Empresa no encontrada (404)</Typography>
+        <Button component={RouterLink} to="/companies" sx={{ mt: 1 }}>Volver a empresas</Button>
       </Box>
     );
-  }
+  if (error)
+    return (
+      <Box>
+        <Typography color="error">Error: {error}</Typography>
+        <Button component={RouterLink} to="/companies" sx={{ mt: 1 }}>Volver a empresas</Button>
+      </Box>
+    );
+  if (!company) return null;
 
   return (
     <Box>
@@ -33,10 +75,10 @@ export default function CompanyDetailPage() {
 
       <Paper sx={{ p: 2 }}>
         <Stack spacing={1.2}>
-          <Typography><strong>Sector:</strong> <Chip label={company.sector} size="small" /></Typography>
-          <Typography><strong>Vacantes abiertas:</strong> {company.vacanciesOpen}</Typography>
-          <Typography><strong>Contacto:</strong> {company.contactName ?? "-"} ({company.contactEmail ?? "-"})</Typography>
-          <Typography><strong>Ubicación:</strong> {company.location ?? "-"}</Typography>
+          <Typography><strong>Sector:</strong> <Chip label={company.sector ?? "-"} size="small" /></Typography>
+          <Typography><strong>Vacantes abiertas:</strong> {openCount}</Typography>
+          <Typography><strong>Contacto:</strong> {company.contact_name ?? "-"} ({company.contact_email ?? "-"})</Typography>
+          <Typography><strong>Teléfono:</strong> {company.contact_phone ?? "-"}</Typography>
           {company.notes && <Typography color="text.secondary">{company.notes}</Typography>}
         </Stack>
       </Paper>

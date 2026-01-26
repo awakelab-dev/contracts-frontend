@@ -1,28 +1,15 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import {
   Box, Paper, Stack, Typography, TextField, InputAdornment, MenuItem,
   Table, TableHead, TableRow, TableCell, TableBody, Chip, Button,
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import { Link as RouterLink } from "react-router-dom";
-
-type Vacancy = {
-  id: number;
-  title: string;
-  company: string;
-  sector: string;
-  status: "open" | "closed";
-  deadline?: string; // ISO
-};
-
-const DATA: Vacancy[] = [
-  { id: 1, title: "Camarero/a terraza fin de semana", company: "R. PARAGUAS", sector: "Hostelería", status: "open", deadline: "2026-01-31" },
-  { id: 2, title: "Runner restaurante alta gama", company: "TATEL", sector: "Hostelería", status: "open", deadline: "2026-02-10" },
-  { id: 3, title: "Dependiente/a tienda urbana", company: "SNIPES ROPA", sector: "Comercio", status: "open" },
-  { id: 4, title: "Operario/a de obra", company: "CONSTRUCCIONES GAHERJO, S.L.", sector: "Construcción", status: "closed" },
-  { id: 5, title: "Ayudante de barra", company: "Restaurante Jose Luis", sector: "Hostelería", status: "open" },
-  { id: 6, title: "Ayudante de sala", company: "R. PARAGUAS", sector: "Hostelería", status: "closed" },
-];
+import api from "../lib/api";
+import type { Vacancy, Company } from "../types";
+import DownloadIcon from "@mui/icons-material/Download";
+import { exportToCsv } from "../utils/CsvExporter";
+import type { CsvColumn } from "../utils/CsvExporter";
 
 function statusChip(s: Vacancy["status"]) {
   return s === "open"
@@ -33,14 +20,66 @@ function statusChip(s: Vacancy["status"]) {
 export default function VacanciesListPage() {
   const [q, setQ] = useState("");
   const [st, setSt] = useState<"all"|"open"|"closed">("all");
+  const [vacancies, setVacancies] = useState<Vacancy[]>([]);
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancel = false;
+    setLoading(true);
+    setError(null);
+    Promise.all([
+      api.get<Vacancy[]>("/vacancies"),
+      api.get<Company[]>("/companies"),
+    ])
+      .then(([vRes, cRes]) => {
+        if (cancel) return;
+        setVacancies(Array.isArray(vRes.data) ? vRes.data : []);
+        setCompanies(Array.isArray(cRes.data) ? cRes.data : []);
+      })
+      .catch((err) => {
+        if (cancel) return;
+        const msg = err?.response?.data?.message || err?.message || "Error al cargar vacantes";
+        setError(msg);
+      })
+      .finally(() => {
+        if (cancel) return;
+        setLoading(false);
+      });
+    return () => {
+      cancel = true;
+    };
+  }, []);
+
+  const companyName = useMemo(() => {
+    const m = new Map<number, string>();
+    for (const c of companies) m.set(c.id, c.name);
+    return m;
+  }, [companies]);
 
   const rows = useMemo(() => {
     const term = q.trim().toLowerCase();
-    return DATA.filter(v =>
+    const list = vacancies.map((v) => ({
+      ...v,
+      company: companyName.get(v.company_id) || `Empresa #${v.company_id}`,
+    }));
+    return list.filter(v =>
       (st === "all" || v.status === st) &&
-      [v.title, v.company, v.sector].some(f => f.toLowerCase().includes(term))
+      [v.title, v.company, v.sector ?? ""].some(f => f.toLowerCase().includes(term))
     );
-  }, [q, st]);
+  }, [q, st, vacancies, companyName]);
+
+  const onExport = () => {
+    const cols: CsvColumn<typeof rows[number]>[] = [
+      { label: "Título", value: (r) => r.title },
+      { label: "Empresa", value: (r) => r.company },
+      { label: "Sector", value: (r) => r.sector ?? "" },
+      { label: "Fecha límite", value: (r) => r.deadline ?? "" },
+      { label: "Estado", value: (r) => r.status },
+    ];
+    exportToCsv("vacantes.csv", cols, rows);
+  };
 
   return (
     <Box>
@@ -72,6 +111,7 @@ export default function VacanciesListPage() {
             <MenuItem value="open">Abiertas</MenuItem>
             <MenuItem value="closed">Cerradas</MenuItem>
           </TextField>
+          <Button variant="outlined" size="small" startIcon={<DownloadIcon />} onClick={onExport}>Exportar CSV</Button>
         </Stack>
       </Stack>
 
@@ -88,11 +128,21 @@ export default function VacanciesListPage() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {rows.map(v => (
+            {loading && (
+              <TableRow>
+                <TableCell colSpan={6} align="center">Cargando…</TableCell>
+              </TableRow>
+            )}
+            {!loading && error && (
+              <TableRow>
+                <TableCell colSpan={6} align="center">Error: {error}</TableCell>
+              </TableRow>
+            )}
+            {!loading && !error && rows.map(v => (
               <TableRow key={v.id} hover>
                 <TableCell>{v.title}</TableCell>
                 <TableCell>{v.company}</TableCell>
-                <TableCell>{v.sector}</TableCell>
+                <TableCell>{v.sector ?? "-"}</TableCell>
                 <TableCell>{v.deadline ?? "-"}</TableCell>
                 <TableCell>{statusChip(v.status)}</TableCell>
                 <TableCell align="right">
@@ -103,7 +153,7 @@ export default function VacanciesListPage() {
                 </TableCell>
               </TableRow>
             ))}
-            {rows.length === 0 && (
+            {!loading && !error && rows.length === 0 && (
               <TableRow>
                 <TableCell colSpan={6} align="center" sx={{ py: 4, color: "text.secondary" }}>
                   No hay vacantes que coincidan con el filtro

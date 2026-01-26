@@ -14,6 +14,11 @@ import {
   Typography,
 } from "@mui/material";
 import { Link as RouterLink } from "react-router-dom";
+import api from "../lib/api";
+import type { Student } from "../types";
+import DownloadIcon from "@mui/icons-material/Download";
+import { exportToCsv } from "../utils/CsvExporter";
+import type { CsvColumn } from "../utils/CsvExporter";
 
 type StudentLite = {
   id: string;
@@ -26,74 +31,59 @@ type StudentLite = {
   situacionLaboral: string;
 };
 
-const STUDENTS: StudentLite[] = [
-  {
-    id: "1",
-    expediente: "EXP-2025-001",
-    nombre: "ANTHONY JOSUE",
-    apellidos: "BRUFAU MODESTO",
-    dniNie: "Y3451629X",
-    distrito: "Centro",
-    cursoFormacion: "AYUDANTE CAMARERO/A",
-    situacionLaboral: "Mejora empleo",
-  },
-  {
-    id: "2",
-    expediente: "EXP-2025-002",
-    nombre: "DELIA",
-    apellidos: "FERNANDINO LÓPEZ",
-    dniNie: "06655123G",
-    distrito: "Tetuán",
-    cursoFormacion: "AYUDANTE CAMARERO/A",
-    situacionLaboral: "Mejora empleo",
-  },
-  {
-    id: "3",
-    expediente: "EXP-2025-003",
-    nombre: "ESTEFANY",
-    apellidos: "QUIÑOY IBÁÑEZ",
-    dniNie: "55945510B",
-    distrito: "Carabanchel",
-    cursoFormacion: "AYUDANTE CAMARERO/A",
-    situacionLaboral: "Mejora empleo",
-  },
-  {
-    id: "4",
-    expediente: "EXP-2025-004",
-    nombre: "JEROME MICHAEL",
-    apellidos: "MASONGSONG",
-    dniNie: "Y3245604L",
-    distrito: "Usera",
-    cursoFormacion: "AYUDANTE CAMARERO/A",
-    situacionLaboral: "Mejora empleo",
-  },
-  {
-    id: "5",
-    expediente: "EXP-2025-005",
-    nombre: "MARÍA CARLOTA",
-    apellidos: "GARCÍA PÉREZ",
-    dniNie: "83214566K",
-    distrito: "Chamartín",
-    cursoFormacion: "COCINA BÁSICA",
-    situacionLaboral: "Sin empleo",
-  },
-  {
-    id: "6",
-    expediente: "EXP-2025-006",
-    nombre: "JUAN CARLOS",
-    apellidos: "RIVERA MARTÍN",
-    dniNie: "50991234Z",
-    distrito: "Latina",
-    cursoFormacion: "COCINA BÁSICA",
-    situacionLaboral: "Mejora empleo",
-  },
-];
+const splitName = (full: string) => {
+  const parts = (full || "").trim().split(/\s+/);
+  const nombre = parts.shift() || "";
+  const apellidos = parts.join(" ");
+  return { nombre, apellidos };
+};
 
 export default function StudentsListPage() {
   const [q, setQ] = React.useState("");
+  const [students, setStudents] = React.useState<Student[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    let cancel = false;
+    setLoading(true);
+    setError(null);
+    api
+      .get<Student[]>("/students")
+      .then(({ data }) => {
+        if (cancel) return;
+        setStudents(Array.isArray(data) ? data : []);
+      })
+      .catch((err) => {
+        if (cancel) return;
+        const msg = err?.response?.data?.message || err?.message || "Error al cargar alumnos";
+        setError(msg);
+      })
+      .finally(() => {
+        if (cancel) return;
+        setLoading(false);
+      });
+    return () => {
+      cancel = true;
+    };
+  }, []);
+
   const rows = React.useMemo(() => {
     const hay = (v?: string) => (v || "").toLowerCase().includes(q.toLowerCase());
-    return STUDENTS.filter(
+    const mapped: StudentLite[] = students.map((s) => {
+      const { nombre, apellidos } = splitName(s.full_name);
+      return {
+        id: String(s.id),
+        expediente: String(s.id),
+        nombre,
+        apellidos,
+        dniNie: s.dni_nie,
+        distrito: "",
+        cursoFormacion: s.course_code,
+        situacionLaboral: s.employment_status,
+      };
+    });
+    return mapped.filter(
       (s) =>
         hay(s.expediente) ||
         hay(s.nombre) ||
@@ -103,15 +93,45 @@ export default function StudentsListPage() {
         hay(s.cursoFormacion) ||
         hay(s.situacionLaboral)
     );
-  }, [q]);
+  }, [students, q]);
 
-  const renderSituacion = (v: string) => {
+  const onExport = React.useCallback(() => {
+    const cols: CsvColumn<StudentLite>[] = [
+      { label: "Nº Expediente", value: (r) => r.expediente },
+      { label: "Nombre", value: (r) => r.nombre },
+      { label: "Apellidos", value: (r) => r.apellidos },
+      { label: "DNI/NIE", value: (r) => r.dniNie },
+      { label: "Distrito", value: (r) => r.distrito },
+      { label: "Curso Formación", value: (r) => r.cursoFormacion },
+      { label: "Situación Laboral", value: (r) => r.situacionLaboral },
+    ];
+    exportToCsv("alumnos.csv", cols, rows);
+  }, [rows]);
+
+  /*const renderSituacion = (v: string) => {
     const l = v.toLowerCase();
     if (l.startsWith("trabaj")) return <Chip size="small" color="success" label={v} />;
     if (l.startsWith("mejora")) return <Chip size="small" color="primary" variant="outlined" label={v} />;
     if (l.startsWith("sin")) return <Chip size="small" color="warning" label={v} />;
     return <Chip size="small" label={v} />;
-  };
+  };*/
+
+  // En StudentsListPage.tsx
+const renderSituacion = (v: string) => {
+  const l = (v || "").toLowerCase();
+  
+  // Verde para los que ya están trabajando
+  if (l === "employed") return <Chip size="small" color="success" label="Empleado" />;
+  
+  // Azul para los que están mejorando
+  if (l === "improved") return <Chip size="small" color="primary" variant="outlined" label="Mejora" />;
+  
+  // Naranja/Amarillo para los que están buscando (unemployed)
+  if (l === "unemployed") return <Chip size="small" color="warning" label="Buscando" />;
+  
+  // Gris por defecto (unknown o cualquier otro)
+  return <Chip size="small" label={v} />;
+};
 
   return (
     <Box>
@@ -127,6 +147,9 @@ export default function StudentsListPage() {
             label="Buscar"
             placeholder="Expediente, nombre, apellidos, DNI/NIE, distrito o curso"
           />
+          <Button variant="outlined" size="small" startIcon={<DownloadIcon />} onClick={onExport}>
+            Exportar CSV
+          </Button>
         </Stack>
         <Table size="small">
           <TableHead>
@@ -141,8 +164,18 @@ export default function StudentsListPage() {
               <TableCell>ACCIONES</TableCell>
             </TableRow>
           </TableHead>
-          <TableBody>
-            {rows.map((s) => (
+        <TableBody>
+            {loading && (
+              <TableRow>
+                <TableCell colSpan={8} align="center">Cargando…</TableCell>
+              </TableRow>
+            )}
+            {!loading && error && (
+              <TableRow>
+                <TableCell colSpan={8} align="center">Error: {error}</TableCell>
+              </TableRow>
+            )}
+            {!loading && !error && rows.map((s) => (
               <TableRow key={s.id} hover>
                 <TableCell>{s.expediente}</TableCell>
                 <TableCell>{s.nombre}</TableCell>
@@ -158,7 +191,7 @@ export default function StudentsListPage() {
                 </TableCell>
               </TableRow>
             ))}
-            {rows.length === 0 && (
+            {!loading && !error && rows.length === 0 && (
               <TableRow>
                 <TableCell colSpan={8} align="center">
                   No hay resultados
