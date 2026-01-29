@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useMemo, useRef, useState, useEffect } from "react";
 import {
   Box,
   Paper,
@@ -15,112 +15,204 @@ import {
   TableBody,
   Chip,
   Alert,
+  LinearProgress,
 } from "@mui/material";
 import UploadIcon from "@mui/icons-material/Upload";
 import SearchIcon from "@mui/icons-material/Search";
+import api from "../lib/api";
 
-type Parsed = {
-  headers: string[];
-  rows: string[][];
-};
-
-function detectDelimiter(firstLine: string): string {
-  const candidates = [",", ";", "\t"];
-  let best = candidates[0];
-  let max = -1;
-  for (const d of candidates) {
-    const count = firstLine.split(d).length - 1;
-    if (count > max) {
-      max = count;
-      best = d;
-    }
-  }
-  return best;
-}
-
-function parseCsv(text: string, delimiter: string): Parsed {
-  const lines = text.split(/\r?\n/).filter((l) => l.trim() !== "");
-  if (lines.length === 0) return { headers: [], rows: [] };
-  const cells = lines.map((l) => l.split(delimiter));
-  const [headers, ...rows] = cells;
-  return { headers: headers ?? [], rows };
-}
+// Esquemas por tipo de importación
+const SCHEMES = {
+  students: ["full_name", "dni_nie", "course_code", "employment_status"],
+  companies: ["name", "sector", "email", "location"],
+  vacancies: ["title", "company_name", "sector", "location"],
+} as const;
+type ImportType = keyof typeof SCHEMES;
+type TargetField = (typeof SCHEMES)[ImportType][number];
+type CsvRowObj = Record<string, string>;
 
 export default function ImportPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [fileName, setFileName] = useState("");
+  const [fileObj, setFileObj] = useState<File | null>(null);
   const [delimiter, setDelimiter] = useState(",");
-  const [parsed, setParsed] = useState<Parsed>({ headers: [], rows: [] });
+  const [headers, setHeaders] = useState<string[]>([]);
+  const [rows, setRows] = useState<CsvRowObj[]>([]);
   const [query, setQuery] = useState("");
-  const [simulation, setSimulation] = useState<{ ok: number; errors: number } | null>(null);
+  const [importType, setImportType] = useState<ImportType>('students');
+  const [mapping, setMapping] = useState<Record<string, string>>({});
+  const [uploading, setUploading] = useState(false);
+  const [result, setResult] = useState<{ inserted: number; skipped: number; total: number } | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const visibleRows = useMemo(() => {
-    if (!query) return parsed.rows.slice(0, 30);
-    const q = query.toLowerCase();
-    return parsed.rows
-      .filter((r) => r.some((c) => (c || "").toLowerCase().includes(q)))
-      .slice(0, 50);
-  }, [parsed.rows, query]);
+  // Parsear con PapaParse dinámico para evitar bundle pesado si no se usa.
+  async function parseWithPapa(file: File, delim: string) {
+    const Papa = (await import("papaparse")).default;
+    return new Promise<{ headers: string[]; rows: CsvRowObj[] }>((resolve, reject) => {
+      Papa.parse<CsvRowObj>(file, {
+        header: true,
+        delimiter: delim,
+        skipEmptyLines: true,
+        transformHeader: (h) => (h || "").trim(),
+        complete: (res) => {
+          const data = (res.data || []).filter((r) => r && Object.keys(r).length > 0);
+          const hdrs = (res.meta.fields || []).map((h) => h || "");
+          resolve({ headers: hdrs, rows: data });
+        },
+        error: (err) => reject(err),
+      });
+    });
+  }
 
-  const handlePickFile = () => {
-    fileInputRef.current?.click();
-  };
+  const handlePickFile = () => fileInputRef.current?.click();
+
+  function guessMapping(hdrs: string[], type: ImportType): Record<string, string> {
+    const lower = (s: string) => s.toLowerCase();
+    const find = (...keys: string[]) => hdrs.find((h) => keys.some((k) => lower(h).includes(k))) || "";
+    if (type === 'students') {
+      return {
+        full_name: find('nombre','full'),
+        dni_nie: find('dni','nie','documento'),
+        course_code: find('curso','course','code'),
+        employment_status: find('status','empleo','situacion'),
+      };
+    } else if (type === 'companies') {
+      return {
+        name: find('name','empresa'),
+        sector: find('sector','industry'),
+        email: find('email','correo','mail'),
+        location: find('ubic', 'loc', 'ciudad', 'provincia', 'direccion'),
+      };
+    } else {
+      // vacancies
+      return {
+        title: find('title','titulo','vacante','puesto'),
+        company_name: find('company','empresa'),
+        sector: find('sector','industry'),
+        location: find('ubic', 'loc', 'ciudad', 'provincia','direccion'),
+      };
+    }
+  }
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     if (!f) return;
+    setError(null);
+    setResult(null);
     setFileName(f.name);
-    const text = await f.text();
-    const firstLine = text.split(/\r?\n/)[0] ?? "";
-    const autoDelim = detectDelimiter(firstLine);
-    setDelimiter(autoDelim);
-    setParsed(parseCsv(text, autoDelim));
-    setSimulation(null);
+    setFileObj(f);
+    // parse inicial con delimitador actual
+    try {
+      const { headers: hdrs, rows: data } = await parseWithPapa(f, delimiter);
+      setHeaders(hdrs);
+      setRows(data);
+      // autodefault mapping por tipo
+      setMapping(guessMapping(hdrs, importType));
+    } catch (err: any) {
+      setError(err?.message || "Error al leer el CSV");
+      setHeaders([]);
+      setRows([]);
+    }
+  };
+const handleDelimiterChange = (val: string) => {
+  setDelimiter(val);
+  // Limpiamos los resultados previos para forzar el re-parseo
+  setHeaders([]);
+  setRows([]);
+};
+  // Reparsear si cambia el delimitador y hay archivo cargado
+  useEffect(() => {
+    if (!fileObj) return;
+    (async () => {
+      try {
+        const { headers: hdrs, rows: data } = await parseWithPapa(fileObj, delimiter);
+        setHeaders(hdrs);
+        setRows(data);
+      } catch (err: any) {
+        setError(err?.message || "Error al leer el CSV");
+        setHeaders([]);
+        setRows([]);
+      }
+    })();
+  }, [delimiter]);
+
+  // Reajustar mapping al cambiar el tipo de import
+  useEffect(() => {
+    if (!headers.length) return;
+    setMapping(guessMapping(headers, importType));
+  }, [importType, headers]);
+
+  const visibleRows = useMemo(() => {
+    const list = rows.slice(0, 5); // previsualizar 5 registros
+    if (!query) return list;
+    const q = query.toLowerCase();
+    return list.filter((r) => Object.values(r).some((v) => (v || "").toString().toLowerCase().includes(q)));
+  }, [rows, query]);
+
+  const onChangeMapping = (field: string, value: string) => {
+    setMapping((m) => ({ ...m, [field]: value }));
   };
 
-  const handleDelimiterChange = (value: string) => {
-    setDelimiter(value);
-    setSimulation(null);
-    // reparse with new delimiter if we still have the original text? para demo,
-    // volvemos a pedir archivo si ya no hay texto. En este modo simple,
-    // sólo afecta a archivos que abras después.
+  const sanitize = (s: string) => (s || '').replace(/^\"+|\"+$/g, '').trim();
+
+  const buildPayload = () => {
+    const fields = SCHEMES[importType];
+    if (importType === 'students') {
+      const toValidStatus = (s: string) => {
+        const v = (s || "").toLowerCase();
+        return ["unemployed", "employed", "improved", "unknown"].includes(v) ? v : "unknown";
+      };
+      const payloadRows = rows.map((r) => ({
+        full_name: sanitize((r[mapping['full_name']] || "").toString()),
+        dni_nie: sanitize((r[mapping['dni_nie']] || "").toString()),
+        course_code: sanitize((r[mapping['course_code']] || "").toString()),
+        employment_status: toValidStatus(sanitize((r[mapping['employment_status']] || "").toString())),
+      })).filter((x) => x.full_name && x.dni_nie && x.course_code);
+      return { rows: payloadRows };
+    }
+    if (importType === 'companies') {
+      const payloadRows = rows.map((r) => ({
+        name: sanitize((r[mapping['name']] || "").toString()),
+        sector: sanitize((r[mapping['sector']] || "").toString()),
+        email: sanitize((r[mapping['email']] || "").toString()),
+        location: sanitize((r[mapping['location']] || "").toString()),
+      })).filter((x) => x.name);
+      return { rows: payloadRows };
+    }
+    // vacancies
+    const payloadRows = rows.map((r) => ({
+      title: sanitize((r[mapping['title']] || "").toString()),
+      company_name: sanitize((r[mapping['company_name']] || "").toString()),
+      sector: sanitize((r[mapping['sector']] || "").toString()),
+      location: sanitize((r[mapping['location']] || "").toString()),
+    })).filter((x) => x.title && x.company_name);
+    return { rows: payloadRows };
   };
 
-  const simulateImport = () => {
-    if (!parsed.headers.length) return;
-    const dniIndex = parsed.headers.findIndex((h) =>
-      h.toLowerCase().includes("dni") || h.toLowerCase().includes("nie")
-    );
-    const nameIndex = parsed.headers.findIndex((h) =>
-      h.toLowerCase().includes("nombre")
-    );
-
-    let ok = 0;
-    let errors = 0;
-    const seen = new Set<string>();
-
-    parsed.rows.forEach((r) => {
-      const dni = (dniIndex >= 0 ? r[dniIndex] : "").trim();
-      const name = (nameIndex >= 0 ? r[nameIndex] : "").trim();
-      if (!dni || !name) {
-        errors++;
-        return;
-      }
-      if (seen.has(dni)) {
-        errors++;
-        return;
-      }
-      seen.add(dni);
-      ok++;
-    });
-
-    setSimulation({ ok, errors });
+  const handleImport = async () => {
+    if (!headers.length) return;
+    setUploading(true);
+    setError(null);
+    setResult(null);
+    try {
+      const payload = buildPayload();
+      const { data } = await api.post(`/${importType}/import`, payload);
+      setResult(data);
+    } catch (e: any) {
+      setError(e?.response?.data?.message || e?.message || "Error en importación");
+    } finally {
+      setUploading(false);
+    }
   };
 
   const resetAll = () => {
     setFileName("");
-    setParsed({ headers: [], rows: [] });
-    setSimulation(null);
+    setFileObj(null);
+    setHeaders([]);
+    setRows([]);
+    setMapping({ full_name: "", dni_nie: "", course_code: "", employment_status: "" });
+    setResult(null);
+    setError(null);
     setQuery("");
   };
 
@@ -142,24 +234,18 @@ export default function ImportPage() {
             style={{ display: "none" }}
             onChange={handleFileChange}
           />
-          <Button
-            variant="contained"
-            startIcon={<UploadIcon />}
-            onClick={handlePickFile}
-          >
+          <Button variant="contained" startIcon={<UploadIcon />} onClick={handlePickFile}>
             Seleccionar archivo
           </Button>
-          <TextField
-            select
-            size="small"
-            label="Delimitador"
-            value={delimiter}
-            onChange={(e) => handleDelimiterChange(e.target.value)}
-            sx={{ minWidth: 150 }}
-          >
+          <TextField select size="small" label="Delimitador" value={delimiter} onChange={(e) => handleDelimiterChange(e.target.value)} sx={{ minWidth: 150 }}>
             <MenuItem value=",">Coma (,)</MenuItem>
             <MenuItem value=";">Punto y coma (;)</MenuItem>
             <MenuItem value="\t">Tabulación</MenuItem>
+          </TextField>
+          <TextField select size="small" label="Tipo" value={importType} onChange={(e) => setImportType(e.target.value as ImportType)} sx={{ minWidth: 180 }}>
+            <MenuItem value="students">Alumnos</MenuItem>
+            <MenuItem value="companies">Empresas</MenuItem>
+            <MenuItem value="vacancies">Vacantes</MenuItem>
           </TextField>
         </Stack>
       </Stack>
@@ -170,7 +256,7 @@ export default function ImportPage() {
         </Alert>
       )}
 
-      {parsed.headers.length > 0 && (
+      {headers.length > 0 && (
         <Paper sx={{ p: 2, mb: 2 }}>
           <Stack
             direction={{ xs: "column", md: "row" }}
@@ -179,7 +265,7 @@ export default function ImportPage() {
             justifyContent="space-between"
             mb={1}
           >
-            <Typography variant="subtitle1">Previsualización (primeras filas)</Typography>
+            <Typography variant="subtitle1">Previsualización (primeras 5 filas)</Typography>
             <TextField
               size="small"
               placeholder="Buscar en las filas"
@@ -195,10 +281,23 @@ export default function ImportPage() {
             />
           </Stack>
 
+          {/* Selector de mapeo dinámico según tipo */}
+          <Stack direction={{ xs: "column", md: "row" }} spacing={1} sx={{ mb: 2 }}>
+            {SCHEMES[importType].map((tf) => (
+              <TextField key={tf} select size="small" label={tf} value={mapping[tf] || ''}
+                onChange={(e) => onChangeMapping(tf, e.target.value)} sx={{ minWidth: 200 }}>
+                <MenuItem value=""><em>—</em></MenuItem>
+                {headers.map((h) => (
+                  <MenuItem key={h} value={h}>{h}</MenuItem>
+                ))}
+              </TextField>
+            ))}
+          </Stack>
+
           <Table size="small">
             <TableHead>
               <TableRow>
-                {parsed.headers.map((h, i) => (
+                {headers.map((h, i) => (
                   <TableCell key={i}>{h}</TableCell>
                 ))}
               </TableRow>
@@ -206,18 +305,14 @@ export default function ImportPage() {
             <TableBody>
               {visibleRows.map((row, ri) => (
                 <TableRow key={ri}>
-                  {parsed.headers.map((_, ci) => (
-                    <TableCell key={ci}>{row[ci] ?? ""}</TableCell>
+                  {headers.map((h, ci) => (
+                    <TableCell key={ci}>{row[h] ?? ""}</TableCell>
                   ))}
                 </TableRow>
               ))}
               {visibleRows.length === 0 && (
                 <TableRow>
-                  <TableCell
-                    colSpan={parsed.headers.length || 1}
-                    align="center"
-                    sx={{ py: 4, color: "text.secondary" }}
-                  >
+                  <TableCell colSpan={headers.length || 1} align="center" sx={{ py: 4, color: "text.secondary" }}>
                     No hay filas para mostrar
                   </TableCell>
                 </TableRow>
@@ -227,34 +322,34 @@ export default function ImportPage() {
         </Paper>
       )}
 
-      {parsed.headers.length > 0 && (
+      {headers.length > 0 && (
         <Stack direction="row" spacing={1}>
-          <Button variant="contained" onClick={simulateImport}>
-            Simular importación
+          <Button variant="contained" onClick={handleImport} disabled={uploading}>
+            {importType === 'students' ? 'Importar Alumnos' : 
+            importType === 'companies' ? 'Importar Empresas' : 
+            'Importar Vacantes'}
           </Button>
-          <Button variant="text" onClick={resetAll}>
+          <Button variant="outlined" onClick={resetAll} disabled={uploading}>
             Reset
           </Button>
         </Stack>
       )}
 
-      {simulation && (
-        <Paper sx={{ p: 2, mt: 2 }}>
-          <Stack direction="row" spacing={2} alignItems="center">
-            <Typography variant="subtitle1">Resultado de simulación</Typography>
-            <Chip label={`OK: ${simulation.ok}`} color="success" size="small" />
-            <Chip
-              label={`Errores: ${simulation.errors}`}
-              color={simulation.errors ? "warning" : "default"}
-              size="small"
-            />
-          </Stack>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            Esta simulación sólo valida que cada fila tenga DNI/NIE y Nombre (si existen
-            columnas con esos nombres) y que no haya DNI/NIE duplicados. No llama al
-            backend; es sólo una vista previa de calidad de datos.
-          </Typography>
-        </Paper>
+      {uploading && (
+        <Box sx={{ mt: 2 }}>
+          <LinearProgress />
+          <Typography variant="caption" color="text.secondary">Importando…</Typography>
+        </Box>
+      )}
+
+      {error && (
+        <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>
+      )}
+
+      {result && (
+        <Alert severity="success" sx={{ mt: 2 }}>
+          Importación de <strong>{importType}</strong> completada. Insertados: <strong>{result.inserted}</strong>, Omitidos: <strong>{result.skipped}</strong>, Total procesado: <strong>{result.total}</strong>.
+        </Alert>
       )}
     </Box>
   );
