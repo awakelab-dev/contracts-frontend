@@ -13,7 +13,6 @@ import {
   TableRow,
   TableCell,
   TableBody,
-  Chip,
   Alert,
   LinearProgress,
 } from "@mui/material";
@@ -23,12 +22,21 @@ import api from "../lib/api";
 
 // Esquemas por tipo de importación
 const SCHEMES = {
-  students: ["full_name", "dni_nie", "course_code", "employment_status"],
-  companies: ["name", "sector", "email", "location"],
+  students: [
+    "first_names",
+    "last_names",
+    "dni_nie",
+    "social_security_number",
+    "birth_date",
+    "district",
+    "phone",
+    "email",
+    "employment_status",
+  ],
+  companies: ["nif", "name", "company_email", "company_phone", "sector", "contact_name", "contact_email"],
   vacancies: ["title", "company_name", "sector", "location"],
 } as const;
 type ImportType = keyof typeof SCHEMES;
-type TargetField = (typeof SCHEMES)[ImportType][number];
 type CsvRowObj = Record<string, string>;
 
 export default function ImportPage() {
@@ -71,17 +79,25 @@ export default function ImportPage() {
     const find = (...keys: string[]) => hdrs.find((h) => keys.some((k) => lower(h).includes(k))) || "";
     if (type === 'students') {
       return {
-        full_name: find('nombre','full'),
+        first_names: find('nombres','nombre','first'),
+        last_names: find('apellidos','apellido','last','surname'),
         dni_nie: find('dni','nie','documento'),
-        course_code: find('curso','course','code'),
-        employment_status: find('status','empleo','situacion'),
+        social_security_number: find('nss','seguridad','social','ss'),
+        birth_date: find('nacimiento','birth','fecha nac','dob'),
+        district: find('distrito','district'),
+        phone: find('tlf','tel','phone','telefono','teléfono','movil','móvil'),
+        email: find('email','correo','mail'),
+        employment_status: find('status','empleo','situacion','situación'),
       };
     } else if (type === 'companies') {
       return {
-        name: find('name','empresa'),
+        nif: find('nif','cif','vat','tax'),
+        name: find('name','empresa','razon','razón','social'),
+        company_email: find('email empresa','correo empresa','mail empresa','company email','email'),
+        company_phone: find('tlf','tel','phone','telefono','teléfono','movil','móvil'),
         sector: find('sector','industry'),
-        email: find('email','correo','mail'),
-        location: find('ubic', 'loc', 'ciudad', 'provincia', 'direccion'),
+        contact_name: find('contact','contacto','rrhh','persona'),
+        contact_email: find('email contacto','correo contacto','contact email','rrhh email','email rrhh'),
       };
     } else {
       // vacancies
@@ -156,26 +172,33 @@ const handleDelimiterChange = (val: string) => {
   const sanitize = (s: string) => (s || '').replace(/^\"+|\"+$/g, '').trim();
 
   const buildPayload = () => {
-    const fields = SCHEMES[importType];
     if (importType === 'students') {
       const toValidStatus = (s: string) => {
         const v = (s || "").toLowerCase();
         return ["unemployed", "employed", "improved", "unknown"].includes(v) ? v : "unknown";
       };
       const payloadRows = rows.map((r) => ({
-        full_name: sanitize((r[mapping['full_name']] || "").toString()),
+        first_names: sanitize((r[mapping['first_names']] || "").toString()),
+        last_names: sanitize((r[mapping['last_names']] || "").toString()),
         dni_nie: sanitize((r[mapping['dni_nie']] || "").toString()),
-        course_code: sanitize((r[mapping['course_code']] || "").toString()),
+        social_security_number: sanitize((r[mapping['social_security_number']] || "").toString()),
+        birth_date: sanitize((r[mapping['birth_date']] || "").toString()),
+        district: sanitize((r[mapping['district']] || "").toString()),
+        phone: sanitize((r[mapping['phone']] || "").toString()),
+        email: sanitize((r[mapping['email']] || "").toString()),
         employment_status: toValidStatus(sanitize((r[mapping['employment_status']] || "").toString())),
-      })).filter((x) => x.full_name && x.dni_nie && x.course_code);
+      })).filter((x) => x.first_names && x.last_names && x.dni_nie);
       return { rows: payloadRows };
     }
     if (importType === 'companies') {
       const payloadRows = rows.map((r) => ({
+        nif: sanitize((r[mapping['nif']] || "").toString()),
         name: sanitize((r[mapping['name']] || "").toString()),
+        company_email: sanitize((r[mapping['company_email']] || "").toString()),
+        company_phone: sanitize((r[mapping['company_phone']] || "").toString()),
         sector: sanitize((r[mapping['sector']] || "").toString()),
-        email: sanitize((r[mapping['email']] || "").toString()),
-        location: sanitize((r[mapping['location']] || "").toString()),
+        contact_name: sanitize((r[mapping['contact_name']] || "").toString()),
+        contact_email: sanitize((r[mapping['contact_email']] || "").toString()),
       })).filter((x) => x.name);
       return { rows: payloadRows };
     }
@@ -210,7 +233,7 @@ const handleDelimiterChange = (val: string) => {
     setFileObj(null);
     setHeaders([]);
     setRows([]);
-    setMapping({ full_name: "", dni_nie: "", course_code: "", employment_status: "" });
+    setMapping({});
     setResult(null);
     setError(null);
     setQuery("");

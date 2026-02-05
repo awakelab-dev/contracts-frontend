@@ -1,4 +1,5 @@
 import {
+  Alert,
   Box,
   Paper,
   Stack,
@@ -64,6 +65,12 @@ export default function DashboardPage() {
       <Typography variant="h5" mb={2}>
         Resumen general
       </Typography>
+
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
+          {error}
+        </Alert>
+      )}
 
       {/* KPIs principales */}
       <Stack

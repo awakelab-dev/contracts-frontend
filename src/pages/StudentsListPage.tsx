@@ -2,7 +2,6 @@ import React from "react";
 import {
   Box,
   Button,
-  Chip,
   Paper,
   Stack,
   Table,
@@ -23,19 +22,14 @@ import type { CsvColumn } from "../utils/CsvExporter";
 type StudentLite = {
   id: string;
   expediente: string;
-  nombre: string;
+  nombres: string;
   apellidos: string;
   dniNie: string;
+  nss: string;
+  fechaNacimiento: string;
   distrito: string;
-  cursoFormacion: string;
-  situacionLaboral: string;
-};
-
-const splitName = (full: string) => {
-  const parts = (full || "").trim().split(/\s+/);
-  const nombre = parts.shift() || "";
-  const apellidos = parts.join(" ");
-  return { nombre, apellidos };
+  telefono: string;
+  email: string;
 };
 
 export default function StudentsListPage() {
@@ -71,67 +65,47 @@ export default function StudentsListPage() {
   const rows = React.useMemo(() => {
     const hay = (v?: string) => (v || "").toLowerCase().includes(q.toLowerCase());
     const mapped: StudentLite[] = students.map((s) => {
-      const { nombre, apellidos } = splitName(s.full_name);
       return {
         id: String(s.id),
         expediente: String(s.id),
-        nombre,
-        apellidos,
+        nombres: s.first_names,
+        apellidos: s.last_names,
         dniNie: s.dni_nie,
-        distrito: "",
-        cursoFormacion: s.course_code,
-        situacionLaboral: s.employment_status,
+        nss: s.social_security_number ?? "",
+        fechaNacimiento: s.birth_date ?? "",
+        distrito: s.district ?? "",
+        telefono: s.phone ?? "",
+        email: s.email ?? "",
       };
     });
     return mapped.filter(
       (s) =>
         hay(s.expediente) ||
-        hay(s.nombre) ||
+        hay(s.nombres) ||
         hay(s.apellidos) ||
         hay(s.dniNie) ||
+        hay(s.nss) ||
+        hay(s.fechaNacimiento) ||
         hay(s.distrito) ||
-        hay(s.cursoFormacion) ||
-        hay(s.situacionLaboral)
+        hay(s.telefono) ||
+        hay(s.email)
     );
   }, [students, q]);
 
   const onExport = React.useCallback(() => {
     const cols: CsvColumn<StudentLite>[] = [
       { label: "Nº Expediente", value: (r) => r.expediente },
-      { label: "Nombre", value: (r) => r.nombre },
+      { label: "Nombres", value: (r) => r.nombres },
       { label: "Apellidos", value: (r) => r.apellidos },
       { label: "DNI/NIE", value: (r) => r.dniNie },
+      { label: "Nº Seguridad Social", value: (r) => r.nss },
+      { label: "Fecha Nacimiento", value: (r) => r.fechaNacimiento },
       { label: "Distrito", value: (r) => r.distrito },
-      { label: "Curso Formación", value: (r) => r.cursoFormacion },
-      { label: "Situación Laboral", value: (r) => r.situacionLaboral },
+      { label: "Teléfono", value: (r) => r.telefono },
+      { label: "Email", value: (r) => r.email },
     ];
     exportToCsv("alumnos.csv", cols, rows);
   }, [rows]);
-
-  /*const renderSituacion = (v: string) => {
-    const l = v.toLowerCase();
-    if (l.startsWith("trabaj")) return <Chip size="small" color="success" label={v} />;
-    if (l.startsWith("mejora")) return <Chip size="small" color="primary" variant="outlined" label={v} />;
-    if (l.startsWith("sin")) return <Chip size="small" color="warning" label={v} />;
-    return <Chip size="small" label={v} />;
-  };*/
-
-  // En StudentsListPage.tsx
-const renderSituacion = (v: string) => {
-  const l = (v || "").toLowerCase();
-  
-  // Verde para los que ya están trabajando
-  if (l === "employed") return <Chip size="small" color="success" label="Empleado" />;
-  
-  // Azul para los que están mejorando
-  if (l === "improved") return <Chip size="small" color="primary" variant="outlined" label="Mejora" />;
-  
-  // Naranja/Amarillo para los que están buscando (unemployed)
-  if (l === "unemployed") return <Chip size="small" color="warning" label="Buscando" />;
-  
-  // Gris por defecto (unknown o cualquier otro)
-  return <Chip size="small" label={v} />;
-};
 
   return (
     <Box>
@@ -145,7 +119,7 @@ const renderSituacion = (v: string) => {
             onChange={(e) => setQ(e.target.value)}
             size="small"
             label="Buscar"
-            placeholder="Expediente, nombre, apellidos, DNI/NIE, distrito o curso"
+            placeholder="Expediente, nombres, apellidos, DNI/NIE, NSS, distrito, teléfono o email"
           />
           <Button variant="outlined" size="small" startIcon={<DownloadIcon />} onClick={onExport}>
             Exportar CSV
@@ -155,35 +129,39 @@ const renderSituacion = (v: string) => {
           <TableHead>
             <TableRow>
               <TableCell>Nº EXPEDIENTE</TableCell>
-              <TableCell>NOMBRE</TableCell>
+              <TableCell>NOMBRES</TableCell>
               <TableCell>APELLIDOS</TableCell>
-              <TableCell>DNI/NIE</TableCell>
+              <TableCell>DNI / NIE</TableCell>
+              <TableCell>Nº SEG. SOCIAL</TableCell>
+              <TableCell>FECHA NACIMIENTO</TableCell>
               <TableCell>DISTRITO</TableCell>
-              <TableCell>CURSO FORMACIÓN</TableCell>
-              <TableCell>SITUACIÓN LABORAL</TableCell>
+              <TableCell>TELÉFONO</TableCell>
+              <TableCell>EMAIL</TableCell>
               <TableCell>ACCIONES</TableCell>
             </TableRow>
           </TableHead>
         <TableBody>
             {loading && (
               <TableRow>
-                <TableCell colSpan={8} align="center">Cargando…</TableCell>
+                <TableCell colSpan={10} align="center">Cargando…</TableCell>
               </TableRow>
             )}
             {!loading && error && (
               <TableRow>
-                <TableCell colSpan={8} align="center">Error: {error}</TableCell>
+                <TableCell colSpan={10} align="center">Error: {error}</TableCell>
               </TableRow>
             )}
             {!loading && !error && rows.map((s) => (
               <TableRow key={s.id} hover>
                 <TableCell>{s.expediente}</TableCell>
-                <TableCell>{s.nombre}</TableCell>
+                <TableCell>{s.nombres}</TableCell>
                 <TableCell>{s.apellidos}</TableCell>
                 <TableCell>{s.dniNie}</TableCell>
-                <TableCell>{s.distrito}</TableCell>
-                <TableCell>{s.cursoFormacion}</TableCell>
-                <TableCell>{renderSituacion(s.situacionLaboral)}</TableCell>
+                <TableCell>{s.nss || "-"}</TableCell>
+                <TableCell>{s.fechaNacimiento || "-"}</TableCell>
+                <TableCell>{s.distrito || "-"}</TableCell>
+                <TableCell>{s.telefono || "-"}</TableCell>
+                <TableCell>{s.email || "-"}</TableCell>
                 <TableCell>
                   <Button component={RouterLink} to={`/students/${s.id}`} size="small">
                     Ver Detalle
@@ -193,7 +171,7 @@ const renderSituacion = (v: string) => {
             ))}
             {!loading && !error && rows.length === 0 && (
               <TableRow>
-                <TableCell colSpan={8} align="center">
+                <TableCell colSpan={10} align="center">
                   No hay resultados
                 </TableCell>
               </TableRow>

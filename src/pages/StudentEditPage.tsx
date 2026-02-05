@@ -43,7 +43,8 @@ const STUDENTS = {
 
 export default function StudentEditPage() {
   const { id } = useParams();
-  const data = STUDENTS[String(id ?? "")] ?? STUDENTS["1"]; // valores por defecto
+  const key = id === "1" || id === "2" ? id : "1";
+  const data = STUDENTS[key]; // valores por defecto
 
   return (
     <Box>
@@ -56,40 +57,40 @@ export default function StudentEditPage() {
       <Paper sx={{ p: 2, mb: 2 }}>
         <Typography variant="subtitle1" sx={{ mb: 1 }}>DATOS PERSONALES</Typography>
         <Grid container spacing={2}>
-          <Grid item xs={12} sm={6} md={4}>
+          <Grid size={{ xs: 12, sm: 6, md: 4 }}>
             <TextField fullWidth label="Nº EXPEDIENTE" size="small" defaultValue={data.expediente} />
           </Grid>
-          <Grid item xs={12} sm={6} md={4}>
+          <Grid size={{ xs: 12, sm: 6, md: 4 }}>
             <TextField fullWidth label="CURSO FORMACIÓN" size="small" defaultValue={data.cursoFormacion} />
           </Grid>
-          <Grid item xs={12} sm={6} md={4}>
+          <Grid size={{ xs: 12, sm: 6, md: 4 }}>
             <TextField fullWidth label="TECNICO LABORAL" size="small" defaultValue={data.tecnicoLaboral} />
           </Grid>
-          <Grid item xs={12} sm={6} md={4}>
+          <Grid size={{ xs: 12, sm: 6, md: 4 }}>
             <TextField fullWidth label="NOMBRE" size="small" defaultValue={data.nombre} />
           </Grid>
-          <Grid item xs={12} sm={6} md={4}>
+          <Grid size={{ xs: 12, sm: 6, md: 4 }}>
             <TextField fullWidth label="APELLIDOS" size="small" defaultValue={data.apellidos} />
           </Grid>
-          <Grid item xs={12} sm={6} md={4}>
+          <Grid size={{ xs: 12, sm: 6, md: 4 }}>
             <TextField fullWidth label="DNI / NIE" size="small" defaultValue={data.dniNie} />
           </Grid>
-          <Grid item xs={12} sm={6} md={4}>
+          <Grid size={{ xs: 12, sm: 6, md: 4 }}>
             <TextField fullWidth label="Nº SEGURIDAD SOCIAL" size="small" defaultValue={data.nss} />
           </Grid>
-          <Grid item xs={12} sm={6} md={4}>
+          <Grid size={{ xs: 12, sm: 6, md: 4 }}>
             <TextField fullWidth label="FECHA NACIMIENTO" size="small" defaultValue={data.fechaNacimiento} />
           </Grid>
-          <Grid item xs={12} sm={6} md={4}>
+          <Grid size={{ xs: 12, sm: 6, md: 4 }}>
             <TextField fullWidth label="EDAD" size="small" defaultValue={data.edad} />
           </Grid>
-          <Grid item xs={12} sm={6} md={4}>
+          <Grid size={{ xs: 12, sm: 6, md: 4 }}>
             <TextField fullWidth label="DISTRITO" size="small" defaultValue={data.distrito} />
           </Grid>
-          <Grid item xs={12} sm={6} md={4}>
+          <Grid size={{ xs: 12, sm: 6, md: 4 }}>
             <TextField fullWidth label="TLF CONTACTO" size="small" defaultValue={data.telefono} />
           </Grid>
-          <Grid item xs={12} sm={6} md={4}>
+          <Grid size={{ xs: 12, sm: 6, md: 4 }}>
             <TextField fullWidth label="E-MAIL" size="small" defaultValue={data.email} />
           </Grid>
         </Grid>

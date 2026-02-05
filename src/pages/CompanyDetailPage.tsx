@@ -75,11 +75,14 @@ export default function CompanyDetailPage() {
 
       <Paper sx={{ p: 2 }}>
         <Stack spacing={1.2}>
+          <Typography><strong>Nombre / Razón Social:</strong> {company.name}</Typography>
+          <Typography><strong>NIF:</strong> {company.nif ?? "-"}</Typography>
+          <Typography><strong>Email empresa:</strong> {company.company_email ?? "-"}</Typography>
+          <Typography><strong>Tlf empresa:</strong> {company.company_phone ?? "-"}</Typography>
           <Typography><strong>Sector:</strong> <Chip label={company.sector ?? "-"} size="small" /></Typography>
+          <Typography><strong>Contacto:</strong> {company.contact_name ?? "-"}</Typography>
+          <Typography><strong>Email contacto:</strong> {company.contact_email ?? "-"}</Typography>
           <Typography><strong>Vacantes abiertas:</strong> {openCount}</Typography>
-          <Typography><strong>Contacto:</strong> {company.contact_name ?? "-"} ({company.contact_email ?? "-"})</Typography>
-          <Typography><strong>Teléfono:</strong> {company.contact_phone ?? "-"}</Typography>
-          {company.notes && <Typography color="text.secondary">{company.notes}</Typography>}
         </Stack>
       </Paper>
     </Box>

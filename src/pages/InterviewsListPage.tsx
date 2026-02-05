@@ -77,7 +77,7 @@ export default function InterviewsListPage() {
     const term = q.trim().toLowerCase();
     const today = new Date();
     const nameById = new Map<number, string>();
-    students.forEach((s) => nameById.set(s.id, s.full_name));
+    students.forEach((s) => nameById.set(s.id, `${s.first_names} ${s.last_names}`.trim()));
     return interviews
       .map((i) => ({
         id: i.id,

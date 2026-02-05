@@ -82,9 +82,15 @@ export default function CompaniesListPage() {
     }));
     if (!term) return list;
     return list.filter((c) =>
-      [c.name, c.sector ?? "", c.contact_name ?? "", c.contact_email ?? ""].some((f) =>
-        f.toLowerCase().includes(term)
-      )
+      [
+        c.nif ?? "",
+        c.name,
+        c.sector ?? "",
+        c.company_email ?? "",
+        c.company_phone ?? "",
+        c.contact_name ?? "",
+        c.contact_email ?? "",
+      ].some((f) => f.toLowerCase().includes(term))
     );
   }, [q, companies, openByCompany]);
 
@@ -94,7 +100,7 @@ export default function CompaniesListPage() {
         <Typography variant="h5">Empresas</Typography>
         <TextField
           size="small"
-          placeholder="Buscar por nombre, sector o contacto"
+          placeholder="Buscar por NIF, nombre, sector, email o contacto"
           value={q}
           onChange={(e) => setQ(e.target.value)}
           InputProps={{
@@ -111,7 +117,7 @@ export default function CompaniesListPage() {
         <Table>
           <TableHead>
             <TableRow>
-              <TableCell>Empresa</TableCell>
+              <TableCell>Nombre / Razón Social</TableCell>
               <TableCell>Sector</TableCell>
               <TableCell>Vacantes</TableCell>
               <TableCell>Contacto</TableCell>
@@ -130,26 +136,40 @@ export default function CompaniesListPage() {
               </TableRow>
             )}
             {!loading && !error && rows.map((c) => (
-              <TableRow key={c.id} hover>
-                <TableCell>{c.name}</TableCell>
-                <TableCell>{sectorChip(c.sector)}</TableCell>
-                <TableCell>
-                  <Chip label={`${c.vacanciesOpen} abiertas`} size="small" color={c.vacanciesOpen > 0 ? "success" : "default"} />
-                </TableCell>
-                <TableCell>
-                  <Stack spacing={0.2}>
-                    <Typography variant="body2">{c.contact_name ?? "-"}</Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {c.contact_email ?? ""}
-                    </Typography>
-                  </Stack>
-                </TableCell>
-                <TableCell align="right">
-                  <Button component={RouterLink} to={`/companies/${c.id}`} size="small">
-                    Ver detalle
-                  </Button>
-                </TableCell>
-              </TableRow>
+                <TableRow key={c.id} hover>
+                  <TableCell>
+                    <Stack spacing={0.2}>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                        {c.name}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        NIF: {c.nif ?? "-"}
+                      </Typography>
+                      {(c.company_email || c.company_phone) && (
+                        <Typography variant="caption" color="text.secondary">
+                          {[c.company_email, c.company_phone].filter(Boolean).join(" · ")}
+                        </Typography>
+                      )}
+                    </Stack>
+                  </TableCell>
+                  <TableCell>{sectorChip(c.sector)}</TableCell>
+                  <TableCell>
+                    <Chip label={`${c.vacanciesOpen} abiertas`} size="small" color={c.vacanciesOpen > 0 ? "success" : "default"} />
+                  </TableCell>
+                  <TableCell>
+                    <Stack spacing={0.2}>
+                      <Typography variant="body2">{c.contact_name ?? "-"}</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {c.contact_email ?? ""}
+                      </Typography>
+                    </Stack>
+                  </TableCell>
+                  <TableCell align="right">
+                    <Button component={RouterLink} to={`/companies/${c.id}`} size="small">
+                      Ver detalle
+                    </Button>
+                  </TableCell>
+                </TableRow>
             ))}
             {!loading && !error && rows.length === 0 && (
               <TableRow>

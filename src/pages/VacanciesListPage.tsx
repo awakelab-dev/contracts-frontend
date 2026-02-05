@@ -12,9 +12,14 @@ import { exportToCsv } from "../utils/CsvExporter";
 import type { CsvColumn } from "../utils/CsvExporter";
 
 function statusChip(s: Vacancy["status"]) {
-  return s === "open"
-    ? <Chip label="Abierta" color="success" size="small" />
-    : <Chip label="Cerrada" size="small" />;
+  return s === "open" ? <Chip label="Abierta" color="success" size="small" /> : <Chip label="Cerrada" size="small" />;
+}
+
+function fmtDate(v: unknown): string {
+  if (!v) return "";
+  if (v instanceof Date) return v.toISOString().slice(0, 10);
+  const s = String(v);
+  return s.length >= 10 ? s.slice(0, 10) : s;
 }
 
 export default function VacanciesListPage() {
@@ -75,7 +80,7 @@ export default function VacanciesListPage() {
       { label: "Título", value: (r) => r.title },
       { label: "Empresa", value: (r) => r.company },
       { label: "Sector", value: (r) => r.sector ?? "" },
-      { label: "Fecha límite", value: (r) => r.deadline ?? "" },
+      { label: "Fecha creación", value: (r) => fmtDate(r.created_at) || "" },
       { label: "Estado", value: (r) => r.status },
     ];
     exportToCsv("vacantes.csv", cols, rows);
@@ -122,7 +127,7 @@ export default function VacanciesListPage() {
               <TableCell>Título</TableCell>
               <TableCell>Empresa</TableCell>
               <TableCell>Sector</TableCell>
-              <TableCell>Fecha límite</TableCell>
+              <TableCell sx={{ whiteSpace: "nowrap" }}>Fecha creación</TableCell>
               <TableCell>Estado</TableCell>
               <TableCell align="right">Acciones</TableCell>
             </TableRow>
@@ -143,7 +148,7 @@ export default function VacanciesListPage() {
                 <TableCell>{v.title}</TableCell>
                 <TableCell>{v.company}</TableCell>
                 <TableCell>{v.sector ?? "-"}</TableCell>
-                <TableCell>{v.deadline ?? "-"}</TableCell>
+                <TableCell sx={{ whiteSpace: "nowrap" }}>{fmtDate(v.created_at) || "-"}</TableCell>
                 <TableCell>{statusChip(v.status)}</TableCell>
                 <TableCell align="right">
                   <Stack direction="row" spacing={1} justifyContent="flex-end">

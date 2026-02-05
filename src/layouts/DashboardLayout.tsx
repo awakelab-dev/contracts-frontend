@@ -1,5 +1,20 @@
 import * as React from "react";
-import { AppBar, Box, CssBaseline, Divider, Drawer, IconButton, List, ListItem, ListItemButton, ListItemIcon, ListItemText, Toolbar, Typography } from "@mui/material";
+import {
+  AppBar,
+  Box,
+  CssBaseline,
+  Divider,
+  Drawer,
+  IconButton,
+  List,
+  ListItem,
+  ListItemButton,
+  ListItemIcon,
+  ListItemText,
+  Stack,
+  Toolbar,
+  Typography,
+} from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
 import DashboardIcon from "@mui/icons-material/Dashboard";
 import SchoolIcon from "@mui/icons-material/School";
@@ -37,7 +52,36 @@ export default function DashboardLayout({ children }: { children?: React.ReactNo
   const drawer = (
     <div>
       <Toolbar>
-        <Typography variant="h6">Contracts</Typography>
+        <Stack
+          direction="row"
+          spacing={1.5}
+          alignItems="center"
+          sx={{ cursor: "pointer" }}
+          onClick={() => navigate("/")}
+        >
+          <Box
+            sx={{
+              width: 34,
+              height: 34,
+              borderRadius: 1.5,
+              bgcolor: "primary.main",
+              color: "primary.contrastText",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <WorkIcon fontSize="small" />
+          </Box>
+          <Box sx={{ lineHeight: 1 }}>
+            <Typography variant="body2" sx={{ fontWeight: 800, lineHeight: 1 }}>
+              GC
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1 }}>
+              Gestión de Contratación
+            </Typography>
+          </Box>
+        </Stack>
       </Toolbar>
       <Divider />
       <List>
@@ -63,7 +107,30 @@ export default function DashboardLayout({ children }: { children?: React.ReactNo
           <IconButton color="inherit" edge="start" onClick={handleDrawerToggle} sx={{ mr: 2, display: { sm: "none" } }}>
             <MenuIcon />
           </IconButton>
-          <Typography variant="h6" noWrap component="div">Gestión de Capacitación vs Contratación</Typography>
+
+          <Stack direction="row" spacing={1.5} alignItems="center" sx={{ flexGrow: 1 }}>
+            <Box
+              sx={{
+                width: 34,
+                height: 34,
+                borderRadius: 1.5,
+                bgcolor: "rgba(255,255,255,0.18)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <WorkIcon fontSize="small" />
+            </Box>
+            <Box sx={{ lineHeight: 1 }}>
+              <Typography variant="body2" sx={{ fontWeight: 800, lineHeight: 1 }}>
+                GC
+              </Typography>
+              <Typography variant="caption" sx={{ opacity: 0.9, lineHeight: 1 }}>
+                Gestión de Contratación
+              </Typography>
+            </Box>
+          </Stack>
         </Toolbar>
       </AppBar>
 

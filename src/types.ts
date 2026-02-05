@@ -1,21 +1,28 @@
 // Shared application types
 
 export interface Student {
-  id: number;
-  full_name: string;
+  id: number; // Nº Expediente
+  first_names: string;
+  last_names: string;
   dni_nie: string;
-  course_code: string;
+  social_security_number?: string | null;
+  birth_date?: string | null; // YYYY-MM-DD
+  district?: string | null;
+  phone?: string | null;
+  email?: string | null;
   employment_status: string; // 'unemployed' | 'employed' | 'improved' | 'unknown'
-  email?: string;
-  phone?: string;
 }
 
 export interface Company {
   id: number;
+  nif?: string | null;
   name: string;
+  company_email?: string | null;
+  company_phone?: string | null;
   sector?: string | null;
   contact_name?: string | null;
   contact_email?: string | null;
+  // legacy fields (optional)
   contact_phone?: string | null;
   notes?: string | null;
 }
@@ -25,9 +32,10 @@ export interface Vacancy {
   company_id: number;
   title: string;
   sector?: string | null;
+  description?: string | null;
   requirements?: string | null; // plain text
   status: "open" | "closed";
-  deadline?: string | null; // ISO date (YYYY-MM-DD)
+  created_at?: string | null; // ISO datetime (or MySQL Date)
 }
 
 export interface Internship {
@@ -43,5 +51,6 @@ export interface Interview {
   student_id: number;
   place?: string | null;
   interview_date: string; // YYYY-MM-DD (schema)
+  status?: "sent" | "attended" | "no_show" | null;
   notes?: string | null;
 }

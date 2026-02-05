@@ -110,7 +110,7 @@ export default function MatchingPage() {
             <TableHead>
               <TableRow>
                 <TableCell>Candidato</TableCell>
-                <TableCell>Curso</TableCell>
+                <TableCell>Distrito</TableCell>
                 <TableCell>Score</TableCell>
                 <TableCell align="right">Acciones</TableCell>
               </TableRow>
@@ -120,11 +120,11 @@ export default function MatchingPage() {
                 <TableRow key={student.id} hover>
                   <TableCell>
                     <Stack direction="row" spacing={1} alignItems="center">
-                      <Typography>{student.full_name}</Typography>
+                      <Typography>{`${student.first_names} ${student.last_names}`.trim()}</Typography>
                       <Chip size="small" label={`${score}%`} color={scoreColor(score)} />
                     </Stack>
                   </TableCell>
-                  <TableCell>{student.course_code}</TableCell>
+                  <TableCell>{student.district ?? "-"}</TableCell>
                   <TableCell width={200}>
                     <Stack spacing={0.5}>
                       <Typography variant="body2">{score} / 100</Typography>

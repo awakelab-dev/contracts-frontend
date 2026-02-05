@@ -1,4 +1,16 @@
-import { Box, Button, Paper, Stack, Typography, ToggleButton, ToggleButtonGroup, Grid, Chip, Skeleton } from "@mui/material";
+import {
+  Alert,
+  Box,
+  Button,
+  Chip,
+  Grid,
+  Paper,
+  Skeleton,
+  Stack,
+  ToggleButton,
+  ToggleButtonGroup,
+  Typography,
+} from "@mui/material";
 import { useEffect, useState } from "react";
 import api from "../lib/api";
 
@@ -53,32 +65,38 @@ export default function ReportsPage() {
         </Stack>
       </Paper>
 
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
+          {error}
+        </Alert>
+      )}
+
       <Grid container spacing={2}>
-        <Grid item xs={12} md={6}>
+        <Grid size={{ xs: 12, md: 6 }}>
           <Paper sx={{ p: 2 }}>
             <Typography variant="body2" color="text.secondary">Número de alumnos/as que acceden a prácticas no laborables</Typography>
             {loading ? <Skeleton variant="text" width={60} height={42} /> : <Typography variant="h4">{data?.alumnosAccedenPracticas ?? 0}</Typography>}
           </Paper>
         </Grid>
-        <Grid item xs={12} md={6}>
+        <Grid size={{ xs: 12, md: 6 }}>
           <Paper sx={{ p: 2 }}>
             <Typography variant="body2" color="text.secondary">Número de alumnos/as que asisten a entrevistas de trabajo</Typography>
             {loading ? <Skeleton variant="text" width={60} height={42} /> : <Typography variant="h4">{data?.alumnosEntrevistas ?? 0}</Typography>}
           </Paper>
         </Grid>
-        <Grid item xs={12} md={6}>
+        <Grid size={{ xs: 12, md: 6 }}>
           <Paper sx={{ p: 2 }}>
             <Typography variant="body2" color="text.secondary">Número de alumnos/as que se incorporan a un puesto de trabajo</Typography>
             {loading ? <Skeleton variant="text" width={60} height={42} /> : <Typography variant="h4">{data?.alumnosIncorporados ?? 0}</Typography>}
           </Paper>
         </Grid>
-        <Grid item xs={12} md={6}>
+        <Grid size={{ xs: 12, md: 6 }}>
           <Paper sx={{ p: 2 }}>
             <Typography variant="body2" color="text.secondary">Número de alumnos/as incorporados a empresas superan los 6 meses de permanencia en este mes</Typography>
             {loading ? <Skeleton variant="text" width={60} height={42} /> : <Typography variant="h4">{data?.alumnosMas6Meses ?? 0}</Typography>}
           </Paper>
         </Grid>
-        <Grid item xs={12} md={6}>
+        <Grid size={{ xs: 12, md: 6 }}>
           <Paper sx={{ p: 2 }}>
             <Typography variant="body2" color="text.secondary">Valoración de empresas del sector sobre la calidad formativa/profesional de los alumnos recibidos. Media ponderada en escala del 1 al 10</Typography>
             {loading ? <Skeleton variant="text" width={60} height={42} /> : (
@@ -89,25 +107,25 @@ export default function ReportsPage() {
             )}
           </Paper>
         </Grid>
-        <Grid item xs={12} md={6}>
+        <Grid size={{ xs: 12, md: 6 }}>
           <Paper sx={{ p: 2 }}>
             <Typography variant="body2" color="text.secondary">Indicadores de impacto en el alumnado: Inserción laboral</Typography>
             {loading ? <Skeleton variant="text" width={60} height={42} /> : <Typography variant="h4">{data?.insercionLaboral ?? 0}%</Typography>}
           </Paper>
         </Grid>
-        <Grid item xs={12} md={6}>
+        <Grid size={{ xs: 12, md: 6 }}>
           <Paper sx={{ p: 2 }}>
             <Typography variant="body2" color="text.secondary">Porcentaje de alumnos que consiguen empleo en el sector hostelero antes de tres meses tras la finalización del itinerario</Typography>
             {loading ? <Skeleton variant="text" width={60} height={42} /> : <Typography variant="h4">{data?.porcentajeEmpleoAntes3Meses ?? 0}%</Typography>}
           </Paper>
         </Grid>
-        <Grid item xs={12} md={6}>
+        <Grid size={{ xs: 12, md: 6 }}>
           <Paper sx={{ p: 2 }}>
             <Typography variant="body2" color="text.secondary">Tiempo promedio de búsqueda de empleo (días)</Typography>
             {loading ? <Skeleton variant="text" width={60} height={42} /> : <Typography variant="h4">{data?.tiempoPromedioBusqueda ?? 0}</Typography>}
           </Paper>
         </Grid>
-        <Grid item xs={12} md={6}>
+        <Grid size={{ xs: 12, md: 6 }}>
           <Paper sx={{ p: 2 }}>
             <Typography variant="body2" color="text.secondary">Alumnos que finalizan prácticas (PNL)</Typography>
             {loading ? <Skeleton variant="text" width={60} height={42} /> : <Typography variant="h4">{data?.alumnosFinalizanPNL ?? 0}</Typography>}
