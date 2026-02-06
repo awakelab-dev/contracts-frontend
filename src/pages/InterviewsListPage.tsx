@@ -1,19 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Box,
-  Paper,
-  Stack,
-  Typography,
-  TextField,
-  InputAdornment,
-  Table,
-  TableHead,
-  TableRow,
-  TableCell,
-  TableBody,
+  Button,
   Checkbox,
   FormControlLabel,
-  Button,
+  InputAdornment,
+  Paper,
+  Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TablePagination,
+  TableRow,
+  TextField,
+  Typography,
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import DownloadIcon from "@mui/icons-material/Download";
@@ -45,6 +46,9 @@ export default function InterviewsListPage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
 
   useEffect(() => {
     let cancel = false;
@@ -103,6 +107,17 @@ export default function InterviewsListPage() {
       });
   }, [interviews, students, q, onlyUpcoming]);
 
+  useEffect(() => {
+    // Cuando cambia el filtro, volvemos a la primera página.
+    setPage(0);
+  }, [q, onlyUpcoming]);
+
+  const pagedRows = useMemo(() => {
+    const start = page * rowsPerPage;
+    const end = start + rowsPerPage;
+    return rows.slice(start, end);
+  }, [rows, page, rowsPerPage]);
+
   const onExport = () => {
     const cols: CsvColumn<typeof rows[number]>[] = [
       { label: "Nombre Alumno", value: (r) => r.studentName },
@@ -160,14 +175,16 @@ export default function InterviewsListPage() {
                 <TableCell colSpan={4} align="center">Error: {error}</TableCell>
               </TableRow>
             )}
-            {!loading && !error && rows.map((r) => (
-              <TableRow key={r.id} hover>
-                <TableCell>{r.studentName}</TableCell>
-                <TableCell>{formatDate(r.interview_date)}</TableCell>
-                <TableCell>{r.place}</TableCell>
-                <TableCell>{r.notes}</TableCell>
-              </TableRow>
-            ))}
+            {!loading &&
+              !error &&
+              pagedRows.map((r) => (
+                <TableRow key={r.id} hover>
+                  <TableCell>{r.studentName}</TableCell>
+                  <TableCell>{formatDate(r.interview_date)}</TableCell>
+                  <TableCell>{r.place}</TableCell>
+                  <TableCell>{r.notes}</TableCell>
+                </TableRow>
+              ))}
             {!loading && !error && rows.length === 0 && (
               <TableRow>
                 <TableCell colSpan={4} align="center" sx={{ py: 4, color: "text.secondary" }}>
@@ -177,6 +194,20 @@ export default function InterviewsListPage() {
             )}
           </TableBody>
         </Table>
+
+        <TablePagination
+          component="div"
+          count={rows.length}
+          page={page}
+          onPageChange={(_, newPage) => setPage(newPage)}
+          rowsPerPage={rowsPerPage}
+          onRowsPerPageChange={(e) => {
+            setRowsPerPage(Number(e.target.value));
+            setPage(0);
+          }}
+          rowsPerPageOptions={[10, 20, 50, 100]}
+          labelRowsPerPage="Filas por página"
+        />
       </Paper>
     </Box>
   );

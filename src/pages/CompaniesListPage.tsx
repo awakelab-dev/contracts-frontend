@@ -1,7 +1,14 @@
 import { useMemo, useState, useEffect } from "react";
 import {
+  Alert,
   Box,
+  Button,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Grid,
   InputAdornment,
   Paper,
   Stack,
@@ -15,6 +22,7 @@ import {
   Typography,
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
+import AddIcon from "@mui/icons-material/Add";
 import { useNavigate } from "react-router-dom";
 import api from "../lib/api";
 import type { Company, Vacancy } from "../types";
@@ -30,6 +38,11 @@ function sectorChip(sector?: string | null) {
   return <Chip label={s} color={color} size="small" variant={color === "default" ? "outlined" : "filled"} />;
 }
 
+function toNull(v: string) {
+  const s = v.trim();
+  return s ? s : null;
+}
+
 export default function CompaniesListPage() {
   const navigate = useNavigate();
 
@@ -42,14 +55,31 @@ export default function CompaniesListPage() {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
 
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createSaving, setCreateSaving] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [createForm, setCreateForm] = useState({
+    name: "",
+    nif: "",
+    sector: "",
+    company_email: "",
+    company_phone: "",
+    contact_name: "",
+    contact_email: "",
+    contact_phone: "",
+    notes: "",
+  });
+
+  async function reloadCompanies() {
+    const { data } = await api.get<Company[]>("/companies");
+    setCompanies(Array.isArray(data) ? data : []);
+  }
+
   useEffect(() => {
     let cancel = false;
     setLoading(true);
     setError(null);
-    Promise.all([
-      api.get<Company[]>("/companies"),
-      api.get<Vacancy[]>("/vacancies"),
-    ])
+    Promise.all([api.get<Company[]>("/companies"), api.get<Vacancy[]>("/vacancies")])
       .then(([cRes, vRes]) => {
         if (cancel) return;
         setCompanies(Array.isArray(cRes.data) ? cRes.data : []);
@@ -57,7 +87,7 @@ export default function CompaniesListPage() {
       })
       .catch((err) => {
         if (cancel) return;
-        const msg = err?.response?.data?.message || err?.message || "Error al cargar empresas";
+        const msg = err?.response?.data?.error || err?.response?.data?.message || err?.message || "Error al cargar empresas";
         setError(msg);
       })
       .finally(() => {
@@ -68,6 +98,56 @@ export default function CompaniesListPage() {
       cancel = true;
     };
   }, []);
+
+  function openCreate() {
+    setCreateError(null);
+    setCreateForm({
+      name: "",
+      nif: "",
+      sector: "",
+      company_email: "",
+      company_phone: "",
+      contact_name: "",
+      contact_email: "",
+      contact_phone: "",
+      notes: "",
+    });
+    setCreateOpen(true);
+  }
+
+  async function createCompany() {
+    const name = createForm.name.trim();
+    if (!name) {
+      setCreateError("El nombre es obligatorio");
+      return;
+    }
+
+    try {
+      setCreateSaving(true);
+      setCreateError(null);
+
+      const payload = {
+        name,
+        nif: toNull(createForm.nif),
+        sector: toNull(createForm.sector),
+        company_email: toNull(createForm.company_email),
+        company_phone: toNull(createForm.company_phone),
+        contact_name: toNull(createForm.contact_name),
+        contact_email: toNull(createForm.contact_email),
+        contact_phone: toNull(createForm.contact_phone),
+        notes: toNull(createForm.notes),
+      };
+
+      await api.post("/companies", payload);
+      await reloadCompanies();
+      setPage(0);
+      setCreateOpen(false);
+    } catch (e: any) {
+      setCreateError(e?.response?.data?.error || e?.response?.data?.message || e?.message || "Error al crear empresa");
+    } finally {
+      setCreateSaving(false);
+    }
+  }
 
   const openByCompany = useMemo(() => {
     const map = new Map<number, number>();
@@ -112,21 +192,32 @@ export default function CompaniesListPage() {
 
   return (
     <Box>
-      <Stack direction="row" alignItems="center" justifyContent="space-between" mb={2}>
+      <Stack
+        direction={{ xs: "column", md: "row" }}
+        spacing={2}
+        alignItems={{ xs: "flex-start", md: "center" }}
+        justifyContent="space-between"
+        mb={2}
+      >
         <Typography variant="h5">Empresas</Typography>
-        <TextField
-          size="small"
-          placeholder="Buscar por NIF, nombre, sector, email o contacto"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon fontSize="small" />
-              </InputAdornment>
-            ),
-          }}
-        />
+        <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ xs: "stretch", sm: "center" }}>
+          <TextField
+            size="small"
+            placeholder="Buscar por NIF, nombre, sector, email o contacto"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" />
+                </InputAdornment>
+              ),
+            }}
+          />
+          <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={openCreate}>
+            Agregar empresa nueva
+          </Button>
+        </Stack>
       </Stack>
 
       <Paper>
@@ -219,6 +310,108 @@ export default function CompaniesListPage() {
           labelRowsPerPage="Filas por página"
         />
       </Paper>
+
+      <Dialog open={createOpen} onClose={() => setCreateOpen(false)} fullWidth maxWidth="md">
+        <DialogTitle>Agregar empresa nueva</DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={2}>
+            {createError && (
+              <Alert severity="error" onClose={() => setCreateError(null)}>
+                {createError}
+              </Alert>
+            )}
+
+            <Grid container spacing={2}>
+              <Grid size={{ xs: 12, md: 8 }}>
+                <TextField
+                  label="Nombre / Razón Social"
+                  value={createForm.name}
+                  onChange={(e) => setCreateForm((p) => ({ ...p, name: e.target.value }))}
+                  required
+                  fullWidth
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 4 }}>
+                <TextField
+                  label="NIF"
+                  value={createForm.nif}
+                  onChange={(e) => setCreateForm((p) => ({ ...p, nif: e.target.value }))}
+                  fullWidth
+                />
+              </Grid>
+
+              <Grid size={{ xs: 12, md: 4 }}>
+                <TextField
+                  label="Sector"
+                  value={createForm.sector}
+                  onChange={(e) => setCreateForm((p) => ({ ...p, sector: e.target.value }))}
+                  fullWidth
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 4 }}>
+                <TextField
+                  label="Email empresa"
+                  value={createForm.company_email}
+                  onChange={(e) => setCreateForm((p) => ({ ...p, company_email: e.target.value }))}
+                  fullWidth
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 4 }}>
+                <TextField
+                  label="Tlf empresa"
+                  value={createForm.company_phone}
+                  onChange={(e) => setCreateForm((p) => ({ ...p, company_phone: e.target.value }))}
+                  fullWidth
+                />
+              </Grid>
+
+              <Grid size={{ xs: 12, md: 4 }}>
+                <TextField
+                  label="Contacto"
+                  value={createForm.contact_name}
+                  onChange={(e) => setCreateForm((p) => ({ ...p, contact_name: e.target.value }))}
+                  fullWidth
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 4 }}>
+                <TextField
+                  label="Email contacto"
+                  value={createForm.contact_email}
+                  onChange={(e) => setCreateForm((p) => ({ ...p, contact_email: e.target.value }))}
+                  fullWidth
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 4 }}>
+                <TextField
+                  label="Tlf contacto"
+                  value={createForm.contact_phone}
+                  onChange={(e) => setCreateForm((p) => ({ ...p, contact_phone: e.target.value }))}
+                  fullWidth
+                />
+              </Grid>
+
+              <Grid size={{ xs: 12 }}>
+                <TextField
+                  label="Notas"
+                  value={createForm.notes}
+                  onChange={(e) => setCreateForm((p) => ({ ...p, notes: e.target.value }))}
+                  fullWidth
+                  multiline
+                  minRows={3}
+                />
+              </Grid>
+            </Grid>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCreateOpen(false)} disabled={createSaving}>
+            Cancelar
+          </Button>
+          <Button variant="contained" onClick={createCompany} disabled={createSaving}>
+            Guardar
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

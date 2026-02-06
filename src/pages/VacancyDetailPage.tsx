@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useParams, Link as RouterLink, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   Alert,
   Box,
@@ -37,6 +37,14 @@ function fmtDate(v: unknown): string {
 export default function VacancyDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const backTo = (location.state as any)?.from;
+  const handleBack = () => {
+    if (typeof backTo === "string" && backTo.startsWith("/")) navigate(backTo);
+    else if (location.key !== "default") navigate(-1);
+    else navigate("/vacancies");
+  };
 
   const [vacancy, setVacancy] = useState<Vacancy | null>(null);
   const [company, setCompany] = useState<Company | null>(null);
@@ -278,14 +286,18 @@ export default function VacancyDetailPage() {
     return (
       <Box>
         <Typography variant="h6">Vacante no encontrada (404)</Typography>
-        <Button component={RouterLink} to="/vacancies" sx={{ mt: 1 }}>Volver a vacantes</Button>
+        <Button onClick={handleBack} sx={{ mt: 1 }}>
+          Volver a vacantes
+        </Button>
       </Box>
     );
   if (error)
     return (
       <Box>
         <Typography color="error">Error: {error}</Typography>
-        <Button component={RouterLink} to="/vacancies" sx={{ mt: 1 }}>Volver a vacantes</Button>
+        <Button onClick={handleBack} sx={{ mt: 1 }}>
+          Volver a vacantes
+        </Button>
       </Box>
     );
   if (!vacancy) return null;
@@ -313,7 +325,7 @@ export default function VacancyDetailPage() {
           <Button size="small" color="error" variant="outlined" onClick={deleteVacancy}>
             Eliminar
           </Button>
-          <Button component={RouterLink} to="/vacancies" size="small">
+          <Button onClick={handleBack} size="small">
             Volver
           </Button>
         </Stack>

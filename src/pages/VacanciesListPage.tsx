@@ -1,7 +1,20 @@
 import { useMemo, useState, useEffect } from "react";
 import {
-  Box, Paper, Stack, Typography, TextField, InputAdornment, MenuItem,
-  Table, TableHead, TableRow, TableCell, TableBody, Chip, Button,
+  Box,
+  Button,
+  Chip,
+  InputAdornment,
+  MenuItem,
+  Paper,
+  Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TablePagination,
+  TableRow,
+  TextField,
+  Typography,
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import { Link as RouterLink } from "react-router-dom";
@@ -24,11 +37,14 @@ function fmtDate(v: unknown): string {
 
 export default function VacanciesListPage() {
   const [q, setQ] = useState("");
-  const [st, setSt] = useState<"all"|"open"|"closed">("all");
+  const [st, setSt] = useState<"all" | "open" | "closed">("all");
   const [vacancies, setVacancies] = useState<Vacancy[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
 
   useEffect(() => {
     let cancel = false;
@@ -69,11 +85,23 @@ export default function VacanciesListPage() {
       ...v,
       company: companyName.get(v.company_id) || `Empresa #${v.company_id}`,
     }));
-    return list.filter(v =>
-      (st === "all" || v.status === st) &&
-      [v.title, v.company, v.sector ?? ""].some(f => f.toLowerCase().includes(term))
+    return list.filter(
+      (v) =>
+        (st === "all" || v.status === st) &&
+        [v.title, v.company, v.sector ?? ""].some((f) => f.toLowerCase().includes(term))
     );
   }, [q, st, vacancies, companyName]);
+
+  useEffect(() => {
+    // Cuando cambia el filtro, volvemos a la primera página.
+    setPage(0);
+  }, [q, st]);
+
+  const pagedRows = useMemo(() => {
+    const start = page * rowsPerPage;
+    const end = start + rowsPerPage;
+    return rows.slice(start, end);
+  }, [rows, page, rowsPerPage]);
 
   const onExport = () => {
     const cols: CsvColumn<typeof rows[number]>[] = [
@@ -135,29 +163,44 @@ export default function VacanciesListPage() {
           <TableBody>
             {loading && (
               <TableRow>
-                <TableCell colSpan={6} align="center">Cargando…</TableCell>
+                <TableCell colSpan={6} align="center">
+                  Cargando…
+                </TableCell>
               </TableRow>
             )}
             {!loading && error && (
               <TableRow>
-                <TableCell colSpan={6} align="center">Error: {error}</TableCell>
-              </TableRow>
-            )}
-            {!loading && !error && rows.map(v => (
-              <TableRow key={v.id} hover>
-                <TableCell>{v.title}</TableCell>
-                <TableCell>{v.company}</TableCell>
-                <TableCell>{v.sector ?? "-"}</TableCell>
-                <TableCell sx={{ whiteSpace: "nowrap" }}>{fmtDate(v.created_at) || "-"}</TableCell>
-                <TableCell>{statusChip(v.status)}</TableCell>
-                <TableCell align="right">
-                  <Stack direction="row" spacing={1} justifyContent="flex-end">
-                    <Button component={RouterLink} to={`/vacancies/${v.id}`} size="small">Ver detalle</Button>
-                    <Button component={RouterLink} to="/matching" size="small" variant="outlined">Matching</Button>
-                  </Stack>
+                <TableCell colSpan={6} align="center">
+                  Error: {error}
                 </TableCell>
               </TableRow>
-            ))}
+            )}
+            {!loading && !error &&
+              pagedRows.map((v) => (
+                <TableRow key={v.id} hover>
+                  <TableCell>{v.title}</TableCell>
+                  <TableCell>{v.company}</TableCell>
+                  <TableCell>{v.sector ?? "-"}</TableCell>
+                  <TableCell sx={{ whiteSpace: "nowrap" }}>{fmtDate(v.created_at) || "-"}</TableCell>
+                  <TableCell>{statusChip(v.status)}</TableCell>
+                  <TableCell align="right">
+                    <Stack direction="row" spacing={1} justifyContent="flex-end">
+                      <Button component={RouterLink} to={`/vacancies/${v.id}`} size="small">
+                        Ver detalle
+                      </Button>
+                      <Button
+                        component={RouterLink}
+                        to={`/matching?vacancyId=${v.id}`}
+                        state={{ from: "/vacancies" }}
+                        size="small"
+                        variant="outlined"
+                      >
+                        Matching
+                      </Button>
+                    </Stack>
+                  </TableCell>
+                </TableRow>
+              ))}
             {!loading && !error && rows.length === 0 && (
               <TableRow>
                 <TableCell colSpan={6} align="center" sx={{ py: 4, color: "text.secondary" }}>
@@ -167,6 +210,20 @@ export default function VacanciesListPage() {
             )}
           </TableBody>
         </Table>
+
+        <TablePagination
+          component="div"
+          count={rows.length}
+          page={page}
+          onPageChange={(_, newPage) => setPage(newPage)}
+          rowsPerPage={rowsPerPage}
+          onRowsPerPageChange={(e) => {
+            setRowsPerPage(Number(e.target.value));
+            setPage(0);
+          }}
+          rowsPerPageOptions={[10, 20, 50, 100]}
+          labelRowsPerPage="Filas por página"
+        />
       </Paper>
     </Box>
   );

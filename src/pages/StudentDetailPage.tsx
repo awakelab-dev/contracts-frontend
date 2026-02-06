@@ -1,4 +1,4 @@
-import { useParams, Link as RouterLink } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import {
@@ -221,6 +221,15 @@ function DonutChart({ slices, size = 84, thickness = 14 }: { slices: DonutSlice[
 
 export default function StudentDetailPage() {
   const { id } = useParams();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const backTo = (location.state as any)?.from;
+  const handleBack = () => {
+    if (typeof backTo === "string" && backTo.startsWith("/")) navigate(backTo);
+    else if (location.key !== "default") navigate(-1);
+    else navigate("/students");
+  };
 
   const [student, setStudent] = useState<Student | null>(null);
   const [vacancies, setVacancies] = useState<Vacancy[]>([]);
@@ -908,7 +917,7 @@ export default function StudentDetailPage() {
     return (
       <Box sx={{ p: 3 }}>
         <Typography variant="h6">Alumno no encontrado (404)</Typography>
-        <Button component={RouterLink} to="/students" sx={{ mt: 1 }}>
+        <Button onClick={handleBack} sx={{ mt: 1 }}>
           Volver
         </Button>
       </Box>
@@ -918,7 +927,7 @@ export default function StudentDetailPage() {
     return (
       <Box sx={{ p: 3 }}>
         <Typography color="error">Error: {loadError}</Typography>
-        <Button component={RouterLink} to="/students" sx={{ mt: 1 }}>
+        <Button onClick={handleBack} sx={{ mt: 1 }}>
           Volver
         </Button>
       </Box>
@@ -935,9 +944,7 @@ export default function StudentDetailPage() {
             Nº expediente: {student.id}
           </Typography>
         </Stack>
-        <Button component={RouterLink} to="/students">
-          Volver
-        </Button>
+        <Button onClick={handleBack}>Volver</Button>
       </Stack>
 
       {actionError && (

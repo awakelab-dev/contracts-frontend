@@ -155,14 +155,14 @@ export default function StudentsListPage() {
           <TableHead>
             <TableRow>
               <TableCell sx={{ whiteSpace: "nowrap" }}>Nº Exp.</TableCell>
-              <TableCell sx={{ whiteSpace: "nowrap" }}>NOMBRES</TableCell>
-              <TableCell sx={{ whiteSpace: "nowrap" }}>APELLIDOS</TableCell>
+              <TableCell sx={{ whiteSpace: "nowrap" }}>Nombres</TableCell>
+              <TableCell sx={{ whiteSpace: "nowrap" }}>Apellidos</TableCell>
               <TableCell sx={{ whiteSpace: "nowrap" }}>DNI / NIE</TableCell>
-              <TableCell sx={{ whiteSpace: "nowrap" }}>Nº SEG. SOC.</TableCell>
-              <TableCell sx={{ whiteSpace: "nowrap" }}>FECHA NAC.</TableCell>
-              <TableCell sx={{ whiteSpace: "nowrap" }}>DISTRITO</TableCell>
-              <TableCell sx={{ whiteSpace: "nowrap" }}>TELÉFONO</TableCell>
-              <TableCell sx={{ whiteSpace: "nowrap" }}>EMAIL</TableCell>
+              <TableCell sx={{ whiteSpace: "nowrap" }}>Nº Seg. Soc.</TableCell>
+              <TableCell sx={{ whiteSpace: "nowrap" }}>Fecha Nac.</TableCell>
+              <TableCell sx={{ whiteSpace: "nowrap" }}>Distrito</TableCell>
+              <TableCell sx={{ whiteSpace: "nowrap" }}>Teléfono</TableCell>
+              <TableCell sx={{ whiteSpace: "nowrap" }}>Email</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
