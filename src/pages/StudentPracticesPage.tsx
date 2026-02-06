@@ -14,6 +14,7 @@ import {
 import api from "../lib/api";
 import { useEffect, useState } from "react";
 import type { Internship } from "../types";
+import { formatDateDMY } from "../utils/date";
 
 export default function StudentPracticesPage() {
   const { id } = useParams();
@@ -76,8 +77,8 @@ export default function StudentPracticesPage() {
               rows.map((r) => (
                 <TableRow key={r.id}>
                   <TableCell>{r.company_name}</TableCell>
-                  <TableCell>{r.start_date}</TableCell>
-                  <TableCell>{r.end_date || "-"}</TableCell>
+                  <TableCell>{formatDateDMY(r.start_date)}</TableCell>
+                  <TableCell>{formatDateDMY(r.end_date)}</TableCell>
                 </TableRow>
               ))
             ) : (!loading && !error && (

@@ -22,16 +22,10 @@ import {
 import api from "../lib/api";
 import type { Vacancy, Company, Student, Interview } from "../types";
 import { computeMatchingScore, scoreColor } from "../utils/MatchingEngine";
+import { formatDateDMY } from "../utils/date";
 
 function statusChip(s: Vacancy["status"]) {
   return s === "open" ? <Chip label="Abierta" color="success" size="small" /> : <Chip label="Cerrada" size="small" />;
-}
-
-function fmtDate(v: unknown): string {
-  if (!v) return "";
-  if (v instanceof Date) return v.toISOString().slice(0, 10);
-  const s = String(v);
-  return s.length >= 10 ? s.slice(0, 10) : s;
 }
 
 export default function VacancyDetailPage() {
@@ -349,7 +343,7 @@ export default function VacancyDetailPage() {
           <Stack spacing={1}>
             <Typography><strong>Empresa:</strong> {company?.name || `Empresa #${vacancy.company_id}`}</Typography>
             <Typography><strong>Sector:</strong> {vacancy.sector ?? "-"}</Typography>
-            <Typography><strong>Fecha creación:</strong> {fmtDate(vacancy.created_at) || "-"}</Typography>
+            <Typography><strong>Fecha creación:</strong> {formatDateDMY(vacancy.created_at)}</Typography>
             <Typography sx={{ whiteSpace: "pre-line" }}>
               <strong>Descripción:</strong> {vacancy.description ?? "-"}
             </Typography>

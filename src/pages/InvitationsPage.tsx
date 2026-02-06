@@ -20,6 +20,7 @@ import SearchIcon from "@mui/icons-material/Search";
 import { Link as RouterLink, useLocation } from "react-router-dom";
 import api from "../lib/api";
 import type { Student } from "../types";
+import { formatDateDMY } from "../utils/date";
 
 type InvitationRow = {
   id: number;
@@ -35,13 +36,6 @@ type InvitationRow = {
 };
 
 type Row = InvitationRow & { studentName: string };
-
-function fmtDate(v: unknown): string {
-  if (!v) return "-";
-  if (v instanceof Date) return v.toISOString().slice(0, 10);
-  const s = String(v);
-  return s.length >= 10 ? s.slice(0, 10) : s;
-}
 
 function statusChip(s: InvitationRow["status"]) {
   switch (s) {
@@ -203,8 +197,8 @@ export default function InvitationsPage() {
                   <TableCell>{inv.vacancy_title}</TableCell>
                   <TableCell>{inv.company_name}</TableCell>
                   <TableCell>{statusChip(inv.status)}</TableCell>
-                  <TableCell sx={{ whiteSpace: "nowrap" }}>{fmtDate(inv.sent_at)}</TableCell>
-                  <TableCell sx={{ whiteSpace: "nowrap" }}>{inv.responded_at ? fmtDate(inv.responded_at) : "-"}</TableCell>
+                  <TableCell sx={{ whiteSpace: "nowrap" }}>{formatDateDMY(inv.sent_at)}</TableCell>
+                  <TableCell sx={{ whiteSpace: "nowrap" }}>{formatDateDMY(inv.responded_at)}</TableCell>
                   <TableCell align="right">
                     <Stack direction="row" spacing={1} justifyContent="flex-end">
                       <Button

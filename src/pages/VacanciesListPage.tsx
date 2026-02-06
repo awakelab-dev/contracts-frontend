@@ -23,16 +23,10 @@ import type { Vacancy, Company } from "../types";
 import DownloadIcon from "@mui/icons-material/Download";
 import { exportToCsv } from "../utils/CsvExporter";
 import type { CsvColumn } from "../utils/CsvExporter";
+import { formatDateDMY } from "../utils/date";
 
 function statusChip(s: Vacancy["status"]) {
   return s === "open" ? <Chip label="Abierta" color="success" size="small" /> : <Chip label="Cerrada" size="small" />;
-}
-
-function fmtDate(v: unknown): string {
-  if (!v) return "";
-  if (v instanceof Date) return v.toISOString().slice(0, 10);
-  const s = String(v);
-  return s.length >= 10 ? s.slice(0, 10) : s;
 }
 
 export default function VacanciesListPage() {
@@ -108,7 +102,7 @@ export default function VacanciesListPage() {
       { label: "Título", value: (r) => r.title },
       { label: "Empresa", value: (r) => r.company },
       { label: "Sector", value: (r) => r.sector ?? "" },
-      { label: "Fecha creación", value: (r) => fmtDate(r.created_at) || "" },
+      { label: "Fecha creación", value: (r) => formatDateDMY(r.created_at, "") },
       { label: "Estado", value: (r) => r.status },
     ];
     exportToCsv("vacantes.csv", cols, rows);
@@ -181,7 +175,7 @@ export default function VacanciesListPage() {
                   <TableCell>{v.title}</TableCell>
                   <TableCell>{v.company}</TableCell>
                   <TableCell>{v.sector ?? "-"}</TableCell>
-                  <TableCell sx={{ whiteSpace: "nowrap" }}>{fmtDate(v.created_at) || "-"}</TableCell>
+                  <TableCell sx={{ whiteSpace: "nowrap" }}>{formatDateDMY(v.created_at)}</TableCell>
                   <TableCell>{statusChip(v.status)}</TableCell>
                   <TableCell align="right">
                     <Stack direction="row" spacing={1} justifyContent="flex-end">

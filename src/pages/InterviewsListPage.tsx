@@ -22,21 +22,17 @@ import api from "../lib/api";
 import type { Interview, Student } from "../types";
 import { exportToCsv } from "../utils/CsvExporter";
 import type { CsvColumn } from "../utils/CsvExporter";
+import { formatDateDMY, toLocalDate } from "../utils/date";
 
 function parseDate(s?: string | null): Date | null {
   if (!s) return null;
-  const d = new Date(s);
-  return isNaN(d.getTime()) ? null : d;
+  const d = toLocalDate(s) ?? new Date(s);
+  return Number.isNaN(d.getTime()) ? null : d;
 }
 
 function formatDate(s?: string | null): string {
-  const d = parseDate(s);
-  if (!d) return s || "-";
-  try {
-    return d.toLocaleDateString();
-  } catch {
-    return s || "-";
-  }
+  const v = formatDateDMY(s, "");
+  return v || s || "-";
 }
 
 export default function InterviewsListPage() {

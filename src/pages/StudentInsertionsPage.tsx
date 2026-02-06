@@ -11,6 +11,7 @@ import {
   TableCell,
   TableBody,
 } from "@mui/material";
+import { formatDateDMY } from "../utils/date";
 
 type Hiring = {
   cifEmpresa: string;
@@ -101,8 +102,8 @@ export default function StudentInsertionsPage() {
                   <TableCell>{r.cifEmpresa}</TableCell>
                   <TableCell>{r.nombreEmpresa}</TableCell>
                   <TableCell>{r.sector}</TableCell>
-                  <TableCell>{r.fechaInicio}</TableCell>
-                  <TableCell>{r.fechaFin || ""}</TableCell>
+                  <TableCell>{formatDateDMY(r.fechaInicio)}</TableCell>
+                  <TableCell>{formatDateDMY(r.fechaFin, "")}</TableCell>
                   <TableCell>{r.porcentajeJornada}</TableCell>
                   <TableCell>{r.grupoCotizacion}</TableCell>
                   <TableCell>{r.tipoContrato}</TableCell>

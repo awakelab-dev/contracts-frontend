@@ -9,8 +9,11 @@ import {
   DialogTitle,
   Divider,
   Grid,
+  IconButton,
+  InputAdornment,
   MenuItem,
   Paper,
+  Popover,
   Stack,
   Tab,
   Tabs,
@@ -27,6 +30,7 @@ import api from "../lib/api";
 import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import PlayCircleOutlineIcon from "@mui/icons-material/PlayCircleOutline";
+import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 
 type LiquidationTarget = "six_months" | "one_year";
 type LiquidationMode = "individual" | "pooled";
@@ -35,6 +39,7 @@ type PreviewStudent = {
   student_id: number;
   first_names: string;
   last_names: string;
+  eligible_from_date?: string | null;
   opening_fte_days: number;
   added_fte_days: number;
   available_fte_days: number;
@@ -45,6 +50,7 @@ type PreviewStudent = {
 type PreviewResponse = {
   start_date: string;
   end_date: string;
+  min_eligible_date?: string | null;
   target: LiquidationTarget;
   mode: LiquidationMode;
   target_fte_days: number;
@@ -94,11 +100,44 @@ function fmtDate(v: unknown): string {
   return s.length >= 10 ? s.slice(0, 10) : s;
 }
 
-function addDays(dateIso: string, days: number): string {
-  const d = new Date(dateIso + "T00:00:00.000Z");
-  if (Number.isNaN(d.getTime())) return "";
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
+function fmtDateEs(v: unknown): string {
+  const iso = fmtDate(v);
+  if (!iso) return "-";
+  const m = /^([0-9]{4})-([0-9]{2})-([0-9]{2})$/.exec(iso);
+  if (!m) return iso;
+  return `${m[3]}/${m[2]}/${m[1]}`;
+}
+
+function normalizeUserDateToIso(input: string): string | null {
+  const raw = (input ?? "").toString().trim();
+  if (!raw) return "";
+
+  // YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    const d = new Date(raw + "T00:00:00.000Z");
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toISOString().slice(0, 10) === raw ? raw : null;
+  }
+
+  // DD/MM/YYYY
+  let m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(raw);
+  if (!m) {
+    // DD-MM-YYYY
+    m = /^(\d{1,2})-(\d{1,2})-(\d{4})$/.exec(raw);
+  }
+
+  if (m) {
+    const dd = Number(m[1]);
+    const mm = Number(m[2]);
+    const yyyy = Number(m[3]);
+    if (!Number.isFinite(dd) || !Number.isFinite(mm) || !Number.isFinite(yyyy)) return null;
+    const iso = `${String(yyyy).padStart(4, "0")}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
+    const d = new Date(iso + "T00:00:00.000Z");
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toISOString().slice(0, 10) === iso ? iso : null;
+  }
+
+  return null;
 }
 
 function targetLabel(t: LiquidationTarget) {
@@ -111,11 +150,18 @@ function modeLabel(m: LiquidationMode) {
 
 export default function LiquidacionPage() {
   const todayIso = useMemo(() => fmtDate(new Date()), []);
+  const todayUi = useMemo(() => fmtDateEs(todayIso), [todayIso]);
 
   const [tab, setTab] = useState<"new" | "history">("new");
 
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState(todayIso);
+
+  const [startDateInput, setStartDateInput] = useState("");
+  const [endDateInput, setEndDateInput] = useState(todayUi);
+
+  const [startPickerAnchor, setStartPickerAnchor] = useState<HTMLElement | null>(null);
+  const [endPickerAnchor, setEndPickerAnchor] = useState<HTMLElement | null>(null);
   const [target, setTarget] = useState<LiquidationTarget>("six_months");
   const [mode, setMode] = useState<LiquidationMode>("individual");
 
@@ -157,9 +203,16 @@ export default function LiquidacionPage() {
       const { data } = await api.get<PreviewResponse>("/liquidations/preview", { params });
       setPreview(data);
 
-      // El backend ajusta el "Desde" efectivo (según último cierre). Sincronizamos para evitar confusiones.
+      // El backend ajusta el "Desde" efectivo (según último cierre / fecha elegible mínima).
+      // Sincronizamos para evitar confusiones.
       if (data?.start_date && (!startDate || startDate < data.start_date)) {
         setStartDate(data.start_date);
+        setStartDateInput(fmtDateEs(data.start_date));
+      }
+
+      if (data?.end_date && (!endDate || endDate !== data.end_date)) {
+        setEndDate(data.end_date);
+        setEndDateInput(fmtDateEs(data.end_date));
       }
     } catch (e: any) {
       setPreviewError(e?.response?.data?.error || e?.message || "Error al generar previsualización");
@@ -209,19 +262,6 @@ export default function LiquidacionPage() {
     void loadHistory();
   }, []);
 
-  // Si ya hay liquidaciones, sugerimos como inicio el día siguiente al último cierre.
-  useEffect(() => {
-    if (startDate) return;
-    if (!history.length) return;
-
-    const maxEnd = history.reduce((acc, h) => {
-      const d = fmtDate(h.end_date);
-      return d && d > acc ? d : acc;
-    }, "");
-
-    if (!maxEnd) return;
-    setStartDate(addDays(maxEnd, 1));
-  }, [history, startDate]);
 
   useEffect(() => {
     void loadPreview();
@@ -230,6 +270,12 @@ export default function LiquidacionPage() {
   const eligibleCount = useMemo(() => {
     return (preview?.students || []).filter((s) => s.eligible).length;
   }, [preview]);
+
+  const startInputParsed = useMemo(() => normalizeUserDateToIso(startDateInput), [startDateInput]);
+  const startInputError = startDateInput.trim() !== "" && startInputParsed === null;
+
+  const endInputParsed = useMemo(() => normalizeUserDateToIso(endDateInput), [endDateInput]);
+  const endInputError = endDateInput.trim() !== "" && endInputParsed === null;
 
   return (
     <Box>
@@ -270,24 +316,110 @@ export default function LiquidacionPage() {
               <Grid size={{ xs: 12, md: 3 }}>
                 <TextField
                   label="Desde"
-                  type="date"
                   size="small"
                   fullWidth
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
+                  value={startDateInput}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setStartDateInput(next);
+                    const iso = normalizeUserDateToIso(next);
+                    if (iso === "") {
+                      setStartDate("");
+                    } else if (iso) {
+                      setStartDate(iso);
+                      setStartDateInput(fmtDateEs(iso));
+                    }
+                  }}
+                  placeholder="dd/mm/aaaa (o dd-mm-aaaa)"
+                  error={startInputError}
+                  helperText={startInputError ? "Formato: dd/mm/aaaa o dd-mm-aaaa" : undefined}
                   InputLabelProps={{ shrink: true }}
+                  InputProps={{
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <IconButton size="small" onClick={(e) => setStartPickerAnchor(e.currentTarget)}>
+                          <CalendarMonthIcon fontSize="small" />
+                        </IconButton>
+                      </InputAdornment>
+                    ),
+                  }}
                 />
+                <Popover
+                  open={Boolean(startPickerAnchor)}
+                  anchorEl={startPickerAnchor}
+                  onClose={() => setStartPickerAnchor(null)}
+                  anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+                >
+                  <Box sx={{ p: 2, width: 260 }}>
+                    <TextField
+                      label="Desde"
+                      type="date"
+                      size="small"
+                      fullWidth
+                      value={startDate || ""}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setStartDate(v);
+                        setStartDateInput(fmtDateEs(v));
+                        setStartPickerAnchor(null);
+                      }}
+                      InputLabelProps={{ shrink: true }}
+                    />
+                  </Box>
+                </Popover>
               </Grid>
               <Grid size={{ xs: 12, md: 3 }}>
                 <TextField
                   label="Hasta"
-                  type="date"
                   size="small"
                   fullWidth
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
+                  value={endDateInput}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setEndDateInput(next);
+                    const iso = normalizeUserDateToIso(next);
+                    if (iso && iso !== "") {
+                      setEndDate(iso);
+                      setEndDateInput(fmtDateEs(iso));
+                    }
+                  }}
+                  placeholder="dd/mm/aaaa (o dd-mm-aaaa)"
+                  error={endInputError}
+                  helperText={endInputError ? "Formato: dd/mm/aaaa o dd-mm-aaaa" : undefined}
                   InputLabelProps={{ shrink: true }}
+                  InputProps={{
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <IconButton size="small" onClick={(e) => setEndPickerAnchor(e.currentTarget)}>
+                          <CalendarMonthIcon fontSize="small" />
+                        </IconButton>
+                      </InputAdornment>
+                    ),
+                  }}
                 />
+                <Popover
+                  open={Boolean(endPickerAnchor)}
+                  anchorEl={endPickerAnchor}
+                  onClose={() => setEndPickerAnchor(null)}
+                  anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+                >
+                  <Box sx={{ p: 2, width: 260 }}>
+                    <TextField
+                      label="Hasta"
+                      type="date"
+                      size="small"
+                      fullWidth
+                      value={endDate}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setEndDate(v);
+                        setEndDateInput(fmtDateEs(v));
+                        setEndPickerAnchor(null);
+                      }}
+                      InputLabelProps={{ shrink: true }}
+                    />
+                  </Box>
+                </Popover>
               </Grid>
 
               <Grid size={{ xs: 12, md: 3 }}>
@@ -340,7 +472,7 @@ export default function LiquidacionPage() {
 
             {(history.length > 0 || preview?.start_date) && (
               <Typography variant="caption" color="text.secondary">
-                Periodo efectivo: {(preview?.start_date || startDate || "—")} → {(preview?.end_date || endDate || "—")}. (Se toma como inicio el día siguiente al último cierre)
+                Periodo efectivo: {fmtDateEs(preview?.start_date || startDate)} → {fmtDateEs(preview?.end_date || endDate)}. (El sistema ajusta el inicio según el último cierre y la fecha elegible mínima)
               </Typography>
             )}
 
@@ -361,6 +493,7 @@ export default function LiquidacionPage() {
                 <TableHead>
                   <TableRow>
                     <TableCell>Alumno</TableCell>
+                    <TableCell sx={{ whiteSpace: "nowrap" }}>Fecha elegible</TableCell>
                     <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>
                       Saldo anterior
                     </TableCell>
@@ -387,6 +520,7 @@ export default function LiquidacionPage() {
                           Nº expediente: {s.student_id}
                         </Typography>
                       </TableCell>
+                      <TableCell sx={{ whiteSpace: "nowrap" }}>{fmtDateEs(s.eligible_from_date)}</TableCell>
                       <TableCell align="right">{s.opening_fte_days.toFixed(2)}</TableCell>
                       <TableCell align="right">{s.added_fte_days.toFixed(2)}</TableCell>
                       <TableCell align="right">{s.available_fte_days.toFixed(2)}</TableCell>
@@ -403,7 +537,7 @@ export default function LiquidacionPage() {
 
                   {preview && preview.students.length === 0 && !previewLoading && (
                     <TableRow>
-                      <TableCell colSpan={6} align="center" sx={{ py: 4, color: "text.secondary" }}>
+                      <TableCell colSpan={7} align="center" sx={{ py: 4, color: "text.secondary" }}>
                         No hay alumnos con días cotizados para el rango seleccionado
                       </TableCell>
                     </TableRow>
@@ -467,7 +601,7 @@ export default function LiquidacionPage() {
                       Rango
                     </Typography>
                     <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                      {fmtDate(executeResult.liquidation.start_date)} → {fmtDate(executeResult.liquidation.end_date)}
+                      {fmtDateEs(executeResult.liquidation.start_date)} → {fmtDateEs(executeResult.liquidation.end_date)}
                     </Typography>
                   </Grid>
                   <Grid size={{ xs: 12, md: 3 }}>
@@ -565,14 +699,14 @@ export default function LiquidacionPage() {
                     <TableRow key={h.id} hover sx={{ cursor: "pointer" }} onClick={() => openDetails(h.id)}>
                       <TableCell>{h.id}</TableCell>
                       <TableCell sx={{ whiteSpace: "nowrap" }}>
-                        {fmtDate(h.start_date)} → {fmtDate(h.end_date)}
+                        {fmtDateEs(h.start_date)} → {fmtDateEs(h.end_date)}
                       </TableCell>
                       <TableCell>{targetLabel(h.target)}</TableCell>
                       <TableCell>{modeLabel(h.mode)}</TableCell>
                       <TableCell align="right">{h.total_jornadas}</TableCell>
                       <TableCell align="right">{h.total_students}</TableCell>
                       <TableCell align="right">{Number(h.total_fte_days_used).toFixed(2)}</TableCell>
-                      <TableCell sx={{ whiteSpace: "nowrap" }}>{fmtDate(h.created_at)}</TableCell>
+                      <TableCell sx={{ whiteSpace: "nowrap" }}>{fmtDateEs(h.created_at)}</TableCell>
                     </TableRow>
                   ))}
                   {history.length === 0 && !historyLoading && (
@@ -607,7 +741,7 @@ export default function LiquidacionPage() {
                       Rango
                     </Typography>
                     <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                      {fmtDate(details.liquidation.start_date)} → {fmtDate(details.liquidation.end_date)}
+                      {fmtDateEs(details.liquidation.start_date)} → {fmtDateEs(details.liquidation.end_date)}
                     </Typography>
                   </Grid>
                   <Grid size={{ xs: 12, md: 4 }}>

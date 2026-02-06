@@ -19,6 +19,7 @@ import type { Student } from "../types";
 import DownloadIcon from "@mui/icons-material/Download";
 import { exportToCsv } from "../utils/CsvExporter";
 import type { CsvColumn } from "../utils/CsvExporter";
+import { formatDateDMY } from "../utils/date";
 
 type StudentLite = {
   id: string;
@@ -32,15 +33,6 @@ type StudentLite = {
   telefono: string;
   email: string;
 };
-
-function fmtBirthDateDdMmYyyy(v?: string | null): string {
-  const s = (v || "").toString();
-  if (!s) return "";
-  const iso = s.length >= 10 ? s.slice(0, 10) : s;
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
-  if (!m) return iso;
-  return `${m[3]}/${m[2]}/${m[1]}`;
-}
 
 export default function StudentsListPage() {
   const navigate = useNavigate();
@@ -87,7 +79,7 @@ export default function StudentsListPage() {
         apellidos: s.last_names,
         dniNie: s.dni_nie,
         nss: s.social_security_number ?? "",
-        fechaNacimiento: fmtBirthDateDdMmYyyy(s.birth_date),
+        fechaNacimiento: formatDateDMY(s.birth_date, ""),
         distrito: s.district ?? "",
         telefono: s.phone ?? "",
         email: s.email ?? "",

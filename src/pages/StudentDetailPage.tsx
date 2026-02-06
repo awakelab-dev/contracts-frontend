@@ -28,6 +28,8 @@ import {
 import api from "../lib/api";
 import type { Company, Interview, Student, Vacancy } from "../types";
 import { computeMatchingScore, scoreColor } from "../utils/MatchingEngine";
+import { formatDateDMY } from "../utils/date";
+import DateTextField from "../components/DateTextField";
 
 type StudentCourse = {
   id: number;
@@ -1060,16 +1062,15 @@ export default function StudentDetailPage() {
 
                     <InfoRow label="Fecha nacimiento">
                       {editingStudent ? (
-                        <TextField
+                        <DateTextField
                           size="small"
-                          type="date"
                           value={studentDraft.birth_date}
-                          onChange={(e) => setStudentDraft((d) => ({ ...d, birth_date: e.target.value }))}
+                          onChange={(nextIso) => setStudentDraft((d) => ({ ...d, birth_date: nextIso }))}
                           fullWidth
-                          InputLabelProps={{ shrink: true }}
+                          placeholder="dd/mm/aaaa"
                         />
                       ) : (
-                        <Typography variant="body2">{student.birth_date ? fmtDate(student.birth_date) : "-"}</Typography>
+                        <Typography variant="body2">{formatDateDMY(student.birth_date)}</Typography>
                       )}
                     </InfoRow>
 
@@ -1223,7 +1224,7 @@ export default function StudentDetailPage() {
                         {interviews.slice(0, 2).map((i) => (
                           <Box key={i.id}>
                             <Stack direction="row" spacing={1} alignItems="center">
-                              <Typography variant="body2">{fmtDate(i.interview_date)}</Typography>
+                              <Typography variant="body2">{formatDateDMY(i.interview_date)}</Typography>
                               {interviewStatusChip(i.status)}
                             </Stack>
                             <Typography variant="caption" color="text.secondary">
@@ -1275,7 +1276,7 @@ export default function StudentDetailPage() {
                               {statusChip(inv.status)}
                             </Stack>
                             <Typography variant="caption" color="text.secondary">
-                              {inv.company_name} · {fmtDate(inv.sent_at)}
+                              {inv.company_name} · {formatDateDMY(inv.sent_at)}
                             </Typography>
                           </Box>
                         ))}
@@ -1310,7 +1311,7 @@ export default function StudentDetailPage() {
                             {p.company_name}
                           </Typography>
                           <Typography variant="caption" color="text.secondary">
-                            {p.position ?? "-"} · {fmtDate(p.start_date)} → {fmtDate(p.end_date) || "-"}
+                            {p.position ?? "-"} · {formatDateDMY(p.start_date)} → {formatDateDMY(p.end_date)}
                           </Typography>
                         </Box>
                       ))}
@@ -1341,7 +1342,7 @@ export default function StudentDetailPage() {
                             {c.company_name}
                           </Typography>
                           <Typography variant="caption" color="text.secondary">
-                            {(c.contract_type || "-") + " · " + fmtDate(c.start_date) + " → " + (fmtDate(c.end_date) || "-")}
+                            {(c.contract_type || "-") + " · " + formatDateDMY(c.start_date) + " → " + formatDateDMY(c.end_date)}
                           </Typography>
                         </Box>
                       ))}
@@ -1373,7 +1374,7 @@ export default function StudentDetailPage() {
                         {c.title}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
-                        {(c.institution || "-") + " · " + (fmtDate(c.start_date) || "-") + " → " + (fmtDate(c.end_date) || "-")}
+                        {(c.institution || "-") + " · " + formatDateDMY(c.start_date) + " → " + formatDateDMY(c.end_date)}
                       </Typography>
                     </Box>
                   ))}
@@ -1416,7 +1417,7 @@ export default function StudentDetailPage() {
                     </TableCell>
                     <TableCell>{companyName.get(vacancy.company_id) || `ID #${vacancy.company_id}`}</TableCell>
                     <TableCell>{vacancy.sector ?? "-"}</TableCell>
-                    <TableCell sx={{ whiteSpace: "nowrap" }}>{fmtDate(vacancy.created_at) || "-"}</TableCell>
+                    <TableCell sx={{ whiteSpace: "nowrap" }}>{formatDateDMY(vacancy.created_at)}</TableCell>
                     <TableCell align="right">
                       <Chip size="small" label={`${score}%`} color={scoreColor(score)} />
                     </TableCell>
@@ -1467,27 +1468,23 @@ export default function StudentDetailPage() {
                   />
                 </Grid>
                 <Grid size={{ xs: 12, md: 6 }}>
-                  <TextField
+                  <DateTextField
                     label="Fecha inicio"
-                    type="date"
                     size="small"
                     fullWidth
                     value={courseForm.start_date}
-                    onChange={(e) => setCourseForm((f) => ({ ...f, start_date: e.target.value }))}
-                    InputLabelProps={{ shrink: true }}
-                    sx={{ "& input": { whiteSpace: "nowrap" } }}
+                    onChange={(nextIso) => setCourseForm((f) => ({ ...f, start_date: nextIso }))}
+                    placeholder="dd/mm/aaaa"
                   />
                 </Grid>
                 <Grid size={{ xs: 12, md: 6 }}>
-                  <TextField
+                  <DateTextField
                     label="Fecha fin"
-                    type="date"
                     size="small"
                     fullWidth
                     value={courseForm.end_date}
-                    onChange={(e) => setCourseForm((f) => ({ ...f, end_date: e.target.value }))}
-                    InputLabelProps={{ shrink: true }}
-                    sx={{ "& input": { whiteSpace: "nowrap" } }}
+                    onChange={(nextIso) => setCourseForm((f) => ({ ...f, end_date: nextIso }))}
+                    placeholder="dd/mm/aaaa"
                   />
                 </Grid>
                 <Grid size={{ xs: 12 }}>
@@ -1543,8 +1540,8 @@ export default function StudentDetailPage() {
                         )}
                       </TableCell>
                       <TableCell>{c.institution ?? "-"}</TableCell>
-                      <TableCell sx={{ whiteSpace: "nowrap" }}>{fmtDate(c.start_date) || "-"}</TableCell>
-                      <TableCell sx={{ whiteSpace: "nowrap" }}>{fmtDate(c.end_date) || "-"}</TableCell>
+                      <TableCell sx={{ whiteSpace: "nowrap" }}>{formatDateDMY(c.start_date)}</TableCell>
+                      <TableCell sx={{ whiteSpace: "nowrap" }}>{formatDateDMY(c.end_date)}</TableCell>
                       <TableCell align="right">
                         <Stack direction="row" spacing={1} justifyContent="flex-end">
                           <Button
@@ -1614,15 +1611,13 @@ export default function StudentDetailPage() {
               </Typography>
               <Grid container spacing={2}>
                 <Grid size={{ xs: 12, md: 4 }}>
-                  <TextField
+                  <DateTextField
                     label="Fecha"
-                    type="date"
                     size="small"
                     fullWidth
                     value={interviewForm.interview_date}
-                    onChange={(e) => setInterviewForm((f) => ({ ...f, interview_date: e.target.value }))}
-                    InputLabelProps={{ shrink: true }}
-                    sx={{ "& input": { whiteSpace: "nowrap" } }}
+                    onChange={(nextIso) => setInterviewForm((f) => ({ ...f, interview_date: nextIso }))}
+                    placeholder="dd/mm/aaaa"
                   />
                 </Grid>
 
@@ -1698,7 +1693,7 @@ export default function StudentDetailPage() {
                 <TableBody>
                   {interviews.map((i) => (
                     <TableRow key={i.id} hover>
-                      <TableCell sx={{ whiteSpace: "nowrap" }}>{fmtDate(i.interview_date) || "-"}</TableCell>
+                      <TableCell sx={{ whiteSpace: "nowrap" }}>{formatDateDMY(i.interview_date)}</TableCell>
                       <TableCell>{interviewStatusChip(i.status)}</TableCell>
                       <TableCell>{i.place ?? "-"}</TableCell>
                       <TableCell>{i.notes ?? ""}</TableCell>
@@ -1803,28 +1798,24 @@ export default function StudentDetailPage() {
                 </Grid>
 
                 <Grid size={{ xs: 12, md: 6 }}>
-                  <TextField
+                  <DateTextField
                     label="Fecha envío"
-                    type="date"
                     size="small"
                     fullWidth
                     value={invitationForm.sent_at}
-                    onChange={(e) => setInvitationForm((f) => ({ ...f, sent_at: e.target.value }))}
-                    InputLabelProps={{ shrink: true }}
-                    sx={{ "& input": { whiteSpace: "nowrap" } }}
+                    onChange={(nextIso) => setInvitationForm((f) => ({ ...f, sent_at: nextIso }))}
+                    placeholder="dd/mm/aaaa"
                   />
                 </Grid>
 
                 <Grid size={{ xs: 12, md: 6 }}>
-                  <TextField
+                  <DateTextField
                     label="Fecha respuesta"
-                    type="date"
                     size="small"
                     fullWidth
                     value={invitationForm.responded_at}
-                    onChange={(e) => setInvitationForm((f) => ({ ...f, responded_at: e.target.value }))}
-                    InputLabelProps={{ shrink: true }}
-                    sx={{ "& input": { whiteSpace: "nowrap" } }}
+                    onChange={(nextIso) => setInvitationForm((f) => ({ ...f, responded_at: nextIso }))}
+                    placeholder="dd/mm/aaaa"
                   />
                 </Grid>
 
@@ -1895,8 +1886,8 @@ export default function StudentDetailPage() {
                       <TableCell>{inv.vacancy_title}</TableCell>
                       <TableCell>{inv.company_name}</TableCell>
                       <TableCell>{statusChip(inv.status)}</TableCell>
-                      <TableCell sx={{ whiteSpace: "nowrap" }}>{fmtDate(inv.sent_at) || "-"}</TableCell>
-                      <TableCell sx={{ whiteSpace: "nowrap" }}>{inv.responded_at ? fmtDate(inv.responded_at) : "-"}</TableCell>
+                      <TableCell sx={{ whiteSpace: "nowrap" }}>{formatDateDMY(inv.sent_at)}</TableCell>
+                      <TableCell sx={{ whiteSpace: "nowrap" }}>{formatDateDMY(inv.responded_at)}</TableCell>
                       <TableCell align="right">
                         <Stack direction="row" spacing={1} justifyContent="flex-end">
                           <Button
@@ -2011,27 +2002,23 @@ export default function StudentDetailPage() {
                 </Grid>
 
                 <Grid size={{ xs: 12, md: 4 }}>
-                  <TextField
+                  <DateTextField
                     label="Inicio"
-                    type="date"
                     size="small"
                     fullWidth
                     value={pnlForm.start_date}
-                    onChange={(e) => setPnlForm((f) => ({ ...f, start_date: e.target.value }))}
-                    InputLabelProps={{ shrink: true }}
-                    sx={{ "& input": { whiteSpace: "nowrap" } }}
+                    onChange={(nextIso) => setPnlForm((f) => ({ ...f, start_date: nextIso }))}
+                    placeholder="dd/mm/aaaa"
                   />
                 </Grid>
                 <Grid size={{ xs: 12, md: 4 }}>
-                  <TextField
+                  <DateTextField
                     label="Fin"
-                    type="date"
                     size="small"
                     fullWidth
                     value={pnlForm.end_date}
-                    onChange={(e) => setPnlForm((f) => ({ ...f, end_date: e.target.value }))}
-                    InputLabelProps={{ shrink: true }}
-                    sx={{ "& input": { whiteSpace: "nowrap" } }}
+                    onChange={(nextIso) => setPnlForm((f) => ({ ...f, end_date: nextIso }))}
+                    placeholder="dd/mm/aaaa"
                   />
                 </Grid>
                 <Grid size={{ xs: 12, md: 2 }}>
@@ -2139,8 +2126,8 @@ export default function StudentDetailPage() {
                         </TableCell>
                         <TableCell>{p.workplace ?? "-"}</TableCell>
                         <TableCell>{p.position ?? "-"}</TableCell>
-                        <TableCell sx={{ whiteSpace: "nowrap" }}>{fmtDate(p.start_date)}</TableCell>
-                        <TableCell sx={{ whiteSpace: "nowrap" }}>{fmtDate(p.end_date) || "-"}</TableCell>
+                        <TableCell sx={{ whiteSpace: "nowrap" }}>{formatDateDMY(p.start_date)}</TableCell>
+                        <TableCell sx={{ whiteSpace: "nowrap" }}>{formatDateDMY(p.end_date)}</TableCell>
                         <TableCell>
                           <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: "pre-line" }}>
                             {p.schedule ?? ""}
@@ -2316,28 +2303,24 @@ export default function StudentDetailPage() {
                 </Grid>
 
                 <Grid size={{ xs: 12, md: 4 }}>
-                  <TextField
+                  <DateTextField
                     label="Fecha de alta"
-                    type="date"
                     size="small"
                     fullWidth
                     value={contractForm.start_date}
-                    onChange={(e) => setContractForm((f) => ({ ...f, start_date: e.target.value }))}
-                    InputLabelProps={{ shrink: true }}
-                    sx={{ "& input": { whiteSpace: "nowrap" } }}
+                    onChange={(nextIso) => setContractForm((f) => ({ ...f, start_date: nextIso }))}
+                    placeholder="dd/mm/aaaa"
                   />
                 </Grid>
 
                 <Grid size={{ xs: 12, md: 4 }}>
-                  <TextField
+                  <DateTextField
                     label="Fecha de baja"
-                    type="date"
                     size="small"
                     fullWidth
                     value={contractForm.end_date}
-                    onChange={(e) => setContractForm((f) => ({ ...f, end_date: e.target.value }))}
-                    InputLabelProps={{ shrink: true }}
-                    sx={{ "& input": { whiteSpace: "nowrap" } }}
+                    onChange={(nextIso) => setContractForm((f) => ({ ...f, end_date: nextIso }))}
+                    placeholder="dd/mm/aaaa"
                   />
                 </Grid>
 
@@ -2456,8 +2439,8 @@ export default function StudentDetailPage() {
                         <TableCell>{c.contribution_group ?? "-"}</TableCell>
                         <TableCell>{c.weekly_hours ?? "-"}</TableCell>
                         <TableCell>{c.contributed_days ?? "-"}</TableCell>
-                        <TableCell sx={{ whiteSpace: "nowrap" }}>{fmtDate(c.start_date)}</TableCell>
-                        <TableCell sx={{ whiteSpace: "nowrap" }}>{fmtDate(c.end_date) || "-"}</TableCell>
+                        <TableCell sx={{ whiteSpace: "nowrap" }}>{formatDateDMY(c.start_date)}</TableCell>
+                        <TableCell sx={{ whiteSpace: "nowrap" }}>{formatDateDMY(c.end_date)}</TableCell>
                         <TableCell>
                           <Typography variant="caption" color="text.secondary">
                             {c.notes ?? ""}

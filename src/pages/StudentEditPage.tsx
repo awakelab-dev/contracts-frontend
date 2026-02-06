@@ -8,6 +8,7 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
+import { formatDateDMY } from "../utils/date";
 
 // Datos mock locales (sin BD)
 const STUDENTS = {
@@ -79,7 +80,7 @@ export default function StudentEditPage() {
             <TextField fullWidth label="Nº SEGURIDAD SOCIAL" size="small" defaultValue={data.nss} />
           </Grid>
           <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-            <TextField fullWidth label="FECHA NACIMIENTO" size="small" defaultValue={data.fechaNacimiento} />
+            <TextField fullWidth label="FECHA NACIMIENTO" size="small" defaultValue={formatDateDMY(data.fechaNacimiento, "")} />
           </Grid>
           <Grid size={{ xs: 12, sm: 6, md: 4 }}>
             <TextField fullWidth label="EDAD" size="small" defaultValue={data.edad} />

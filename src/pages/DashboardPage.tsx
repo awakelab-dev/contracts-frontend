@@ -24,6 +24,7 @@ import BusinessIcon from "@mui/icons-material/Business";
 import WorkIcon from "@mui/icons-material/Work";
 import InsightsIcon from "@mui/icons-material/Insights";
 import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
+import { formatDateDMY } from "../utils/date";
 
 type StatsSummary = {
   total_students: number;
@@ -714,7 +715,7 @@ export default function DashboardPage() {
                   <TableRow key={l.id} hover>
                     <TableCell>{l.id}</TableCell>
                     <TableCell sx={{ whiteSpace: "nowrap" }}>
-                      {fmtDate(l.start_date)} → {fmtDate(l.end_date)}
+                      {formatDateDMY(l.start_date)} → {formatDateDMY(l.end_date)}
                     </TableCell>
                     <TableCell>{l.mode === "pooled" ? "Combinada" : "Individual"}</TableCell>
                     <TableCell align="right">{l.total_jornadas}</TableCell>
