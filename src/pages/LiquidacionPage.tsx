@@ -9,6 +9,7 @@ import {
   DialogTitle,
   Divider,
   Grid,
+  MenuItem,
   Paper,
   Stack,
   Tab,
@@ -19,8 +20,6 @@ import {
   TableHead,
   TableRow,
   TextField,
-  ToggleButton,
-  ToggleButtonGroup,
   Typography,
 } from "@mui/material";
 import { useEffect, useMemo, useState } from "react";
@@ -157,6 +156,11 @@ export default function LiquidacionPage() {
       if (startDate) params.start_date = startDate;
       const { data } = await api.get<PreviewResponse>("/liquidations/preview", { params });
       setPreview(data);
+
+      // El backend ajusta el "Desde" efectivo (según último cierre). Sincronizamos para evitar confusiones.
+      if (data?.start_date && (!startDate || startDate < data.start_date)) {
+        setStartDate(data.start_date);
+      }
     } catch (e: any) {
       setPreviewError(e?.response?.data?.error || e?.message || "Error al generar previsualización");
       setPreview(null);
@@ -209,10 +213,15 @@ export default function LiquidacionPage() {
   useEffect(() => {
     if (startDate) return;
     if (!history.length) return;
-    const last = history[0];
-    if (!last?.end_date) return;
-    setStartDate(addDays(fmtDate(last.end_date), 1));
-  }, [history]);
+
+    const maxEnd = history.reduce((acc, h) => {
+      const d = fmtDate(h.end_date);
+      return d && d > acc ? d : acc;
+    }, "");
+
+    if (!maxEnd) return;
+    setStartDate(addDays(maxEnd, 1));
+  }, [history, startDate]);
 
   useEffect(() => {
     void loadPreview();
@@ -234,7 +243,13 @@ export default function LiquidacionPage() {
             variant="contained"
             startIcon={<PlayCircleOutlineIcon />}
             onClick={executeLiquidation}
-            disabled={executeLoading || previewLoading || !preview || preview.students.length === 0}
+            disabled={
+              executeLoading ||
+              previewLoading ||
+              !preview ||
+              preview.students.length === 0 ||
+              (preview.pool?.total_jornadas ?? 0) < 1
+            }
           >
             Ejecutar liquidación
           </Button>
@@ -261,7 +276,6 @@ export default function LiquidacionPage() {
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
                   InputLabelProps={{ shrink: true }}
-                  helperText={history.length ? "Sugerido: día siguiente al último cierre" : "Opcional"}
                 />
               </Grid>
               <Grid size={{ xs: 12, md: 3 }}>
@@ -277,32 +291,33 @@ export default function LiquidacionPage() {
               </Grid>
 
               <Grid size={{ xs: 12, md: 3 }}>
-                <Stack spacing={0.75}>
-                  <Typography variant="caption" color="text.secondary">
-                    Objetivo
-                  </Typography>
-                  <ToggleButtonGroup
-                    value={target}
-                    exclusive
-                    onChange={(_, v) => v && setTarget(v)}
-                    size="small"
-                  >
-                    <ToggleButton value="six_months">6 meses</ToggleButton>
-                    <ToggleButton value="one_year">1 año</ToggleButton>
-                  </ToggleButtonGroup>
-                </Stack>
+                <TextField
+                  select
+                  label="Objetivo"
+                  size="small"
+                  fullWidth
+                  value={target}
+                  onChange={(e) => setTarget(e.target.value as LiquidationTarget)}
+                  InputLabelProps={{ shrink: true }}
+                >
+                  <MenuItem value="six_months">6 meses</MenuItem>
+                  <MenuItem value="one_year">1 año</MenuItem>
+                </TextField>
               </Grid>
 
               <Grid size={{ xs: 12, md: 3 }}>
-                <Stack spacing={0.75}>
-                  <Typography variant="caption" color="text.secondary">
-                    Modo
-                  </Typography>
-                  <ToggleButtonGroup value={mode} exclusive onChange={(_, v) => v && setMode(v)} size="small">
-                    <ToggleButton value="individual">Individual</ToggleButton>
-                    <ToggleButton value="pooled">Combinada</ToggleButton>
-                  </ToggleButtonGroup>
-                </Stack>
+                <TextField
+                  select
+                  label="Modo"
+                  size="small"
+                  fullWidth
+                  value={mode}
+                  onChange={(e) => setMode(e.target.value as LiquidationMode)}
+                  InputLabelProps={{ shrink: true }}
+                >
+                  <MenuItem value="individual">Individual</MenuItem>
+                  <MenuItem value="pooled">Combinada</MenuItem>
+                </TextField>
               </Grid>
 
               <Grid size={{ xs: 12 }}>
@@ -322,6 +337,18 @@ export default function LiquidacionPage() {
                 </Stack>
               </Grid>
             </Grid>
+
+            {(history.length > 0 || preview?.start_date) && (
+              <Typography variant="caption" color="text.secondary">
+                Periodo efectivo: {(preview?.start_date || startDate || "—")} → {(preview?.end_date || endDate || "—")}. (Se toma como inicio el día siguiente al último cierre)
+              </Typography>
+            )}
+
+            {preview && (preview.pool?.total_jornadas ?? 0) < 1 && !previewLoading && (
+              <Alert severity="warning">
+                Aún no alcanza para liquidar al menos <strong>1 jornada completa</strong> con el objetivo seleccionado.
+              </Alert>
+            )}
 
             {previewError && (
               <Alert severity="error" onClose={() => setPreviewError(null)}>
