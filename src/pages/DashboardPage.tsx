@@ -37,15 +37,23 @@ type StatsSummary = {
 type InvitationRow = {
   id: number;
   status: "sent" | "accepted" | "rejected" | "expired";
+  sent_at?: string;
 };
 
 type InterviewRow = {
   id: number;
+  interview_date?: string;
   status?: "sent" | "attended" | "no_show" | null;
+};
+
+type PnlRow = {
+  id: number;
+  start_date?: string;
 };
 
 type HiringContractRow = {
   id: number;
+  start_date?: string;
   company_name: string;
   sector?: string | null;
   contributed_days?: number | null;
@@ -79,6 +87,169 @@ function fmtDate(v: unknown): string {
   if (v instanceof Date) return v.toISOString().slice(0, 10);
   const s = String(v);
   return s.length >= 10 ? s.slice(0, 10) : s;
+}
+
+function pad2(n: number) {
+  return String(n).padStart(2, "0");
+}
+
+const MONTHS_ES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"] as const;
+
+function lastNMonthKeys(n: number, ref: Date = new Date()): string[] {
+  // Usamos meses en horario local para que el dashboard coincida con la percepción del usuario.
+  const base = new Date(ref.getFullYear(), ref.getMonth(), 1);
+  const out: string[] = [];
+
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date(base);
+    d.setMonth(d.getMonth() - i);
+    out.push(`${d.getFullYear()}-${pad2(d.getMonth() + 1)}`);
+  }
+
+  return out;
+}
+
+function monthLabelFromKey(key: string): string {
+  const [yy, mm] = key.split("-");
+  const m = Number(mm);
+  const label = MONTHS_ES[m - 1] || key;
+  return `${label} ${String(yy).slice(-2)}`;
+}
+
+function monthKeyFromValue(v: unknown): string | null {
+  const s = String(v ?? "");
+  if (s.length < 7) return null;
+  const key = s.slice(0, 7);
+  return /^\d{4}-\d{2}$/.test(key) ? key : null;
+}
+
+function countByMonth<T>(monthKeys: string[], items: T[], getDate: (item: T) => unknown): number[] {
+  const map = new Map<string, number>();
+  monthKeys.forEach((k) => map.set(k, 0));
+
+  for (const it of items) {
+    const key = monthKeyFromValue(getDate(it));
+    if (!key) continue;
+    if (!map.has(key)) continue;
+    map.set(key, (map.get(key) || 0) + 1);
+  }
+
+  return monthKeys.map((k) => map.get(k) || 0);
+}
+
+function niceCeil(n: number) {
+  const v = Number(n);
+  if (!Number.isFinite(v) || v <= 0) return 1;
+  if (v <= 10) return Math.ceil(v);
+
+  const exp = Math.pow(10, Math.floor(Math.log10(v)));
+  const f = v / exp;
+  const niceF = f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10;
+  return niceF * exp;
+}
+
+type AreaSeries = { name: string; values: number[]; color: string };
+
+function AreaLineChart({ labels, series, height = 220 }: { labels: string[]; series: AreaSeries[]; height?: number }) {
+  const W = 720;
+  const H = 260;
+  const padding = { l: 44, r: 14, t: 16, b: 34 };
+
+  const n = labels.length;
+  const plotW = W - padding.l - padding.r;
+  const plotH = H - padding.t - padding.b;
+  const baseY = padding.t + plotH;
+
+  const maxVal = Math.max(
+    0,
+    ...series.flatMap((s) => s.values.map((v) => (Number.isFinite(v) ? v : 0)))
+  );
+  const yMax = niceCeil(maxVal * 1.1);
+
+  const xs = labels.map((_, i) => {
+    if (n <= 1) return padding.l + plotW / 2;
+    return padding.l + (plotW * i) / (n - 1);
+  });
+
+  const y = (v: number) => padding.t + plotH * (1 - Math.max(0, v) / (yMax || 1));
+
+  const ticks = [0, Math.round(yMax / 3), Math.round((2 * yMax) / 3), yMax].filter((v, i, a) => a.indexOf(v) === i);
+
+  return (
+    <Box sx={{ width: "100%", height }}>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" height="100%" role="img">
+        {/* horizontal grid */}
+        {ticks.map((tv) => {
+          const yy = y(tv);
+          return (
+            <g key={tv}>
+              <line x1={padding.l} x2={W - padding.r} y1={yy} y2={yy} stroke="rgba(0,0,0,0.08)" strokeWidth={1} />
+              <text x={padding.l - 10} y={yy + 4} textAnchor="end" fontSize={11} fill="rgba(0,0,0,0.55)">
+                {tv}
+              </text>
+            </g>
+          );
+        })}
+
+        {/* x axis labels */}
+        {labels.map((lbl, i) => (
+          <text
+            key={lbl + i}
+            x={xs[i]}
+            y={H - 12}
+            textAnchor="middle"
+            fontSize={11}
+            fill="rgba(0,0,0,0.55)"
+          >
+            {lbl}
+          </text>
+        ))}
+
+        {/* series (areas then lines) */}
+        {series.map((s) => {
+          const pts = s.values.map((v, i) => [xs[i], y(Number(v) || 0)] as const);
+          if (!pts.length) return null;
+
+          const lineD = pts
+            .map(([px, py], i) => `${i === 0 ? "M" : "L"} ${px.toFixed(2)} ${py.toFixed(2)}`)
+            .join(" ");
+
+          const areaD = `${lineD} L ${pts[pts.length - 1][0].toFixed(2)} ${baseY.toFixed(2)} L ${pts[0][0].toFixed(2)} ${baseY.toFixed(
+            2
+          )} Z`;
+
+          return (
+            <g key={s.name}>
+              <path d={areaD} fill={s.color} fillOpacity={0.12} />
+              <path d={lineD} fill="none" stroke={s.color} strokeWidth={2} />
+              {pts.map(([px, py], idx) => (
+                <circle key={idx} cx={px} cy={py} r={3} fill={s.color} stroke="#fff" strokeWidth={1} />
+              ))}
+            </g>
+          );
+        })}
+
+        {/* axis lines */}
+        <line x1={padding.l} x2={padding.l} y1={padding.t} y2={baseY} stroke="rgba(0,0,0,0.12)" strokeWidth={1} />
+        <line x1={padding.l} x2={W - padding.r} y1={baseY} y2={baseY} stroke="rgba(0,0,0,0.12)" strokeWidth={1} />
+      </svg>
+    </Box>
+  );
+}
+
+function SeriesLegend({ series }: { series: AreaSeries[] }) {
+  return (
+    <Stack direction="row" spacing={1.5} useFlexGap flexWrap="wrap" alignItems="center">
+      {series.map((s) => (
+        <Stack key={s.name} direction="row" spacing={1} alignItems="center">
+          <Box sx={{ width: 10, height: 10, borderRadius: 99, bgcolor: s.color }} />
+          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
+            {s.name}
+          </Typography>
+        </Stack>
+      ))}
+    </Stack>
+  );
 }
 
 function DonutChart({ slices, size = 88, thickness = 14 }: { slices: DonutSlice[]; size?: number; thickness?: number }) {
@@ -213,6 +384,7 @@ export default function DashboardPage() {
   const [vacancies, setVacancies] = useState<(Vacancy & { company_name?: string })[]>([]);
   const [invitations, setInvitations] = useState<InvitationRow[]>([]);
   const [interviews, setInterviews] = useState<InterviewRow[]>([]);
+  const [pnlRows, setPnlRows] = useState<PnlRow[]>([]);
   const [contracts, setContracts] = useState<HiringContractRow[]>([]);
   const [liquidations, setLiquidations] = useState<LiquidationRow[]>([]);
   const [liqPreview, setLiqPreview] = useState<LiquidationPreview | null>(null);
@@ -227,13 +399,14 @@ export default function DashboardPage() {
 
         const end_date = fmtDate(new Date());
 
-        const [sumRes, sRes, cRes, vRes, invRes, intRes, hcRes, lRes] = await Promise.all([
+        const [sumRes, sRes, cRes, vRes, invRes, intRes, pnlRes, hcRes, lRes] = await Promise.all([
           api.get<StatsSummary>("/stats/summary"),
           api.get<Student[]>("/students"),
           api.get<Company[]>("/companies"),
           api.get<(Vacancy & { company_name?: string })[]>("/vacancies"),
           api.get<InvitationRow[]>("/invitations"),
           api.get<InterviewRow[]>("/interviews"),
+          api.get<PnlRow[]>("/pnl"),
           api.get<HiringContractRow[]>("/hiring-contracts"),
           api.get<LiquidationRow[]>("/liquidations"),
         ]);
@@ -256,6 +429,7 @@ export default function DashboardPage() {
         setVacancies(Array.isArray(vRes.data) ? vRes.data : []);
         setInvitations(Array.isArray(invRes.data) ? invRes.data : []);
         setInterviews(Array.isArray(intRes.data) ? intRes.data : []);
+        setPnlRows(Array.isArray(pnlRes.data) ? pnlRes.data : []);
         setContracts(Array.isArray(hcRes.data) ? hcRes.data : []);
         setLiquidations(Array.isArray(lRes.data) ? lRes.data : []);
         setLiqPreview(preview);
@@ -330,6 +504,40 @@ export default function DashboardPage() {
 
   const recentLiquidations = useMemo(() => liquidations.slice(0, 5), [liquidations]);
 
+  const last6MonthKeys = useMemo(() => lastNMonthKeys(6), []);
+  const last6MonthLabels = useMemo(() => last6MonthKeys.map(monthLabelFromKey), [last6MonthKeys]);
+
+  const invitations6m = useMemo(
+    () => countByMonth(last6MonthKeys, invitations, (i) => i.sent_at),
+    [last6MonthKeys, invitations]
+  );
+  const interviews6m = useMemo(
+    () => countByMonth(last6MonthKeys, interviews, (i) => i.interview_date),
+    [last6MonthKeys, interviews]
+  );
+  const pnl6m = useMemo(() => countByMonth(last6MonthKeys, pnlRows, (p) => p.start_date), [last6MonthKeys, pnlRows]);
+  const contracts6m = useMemo(
+    () => countByMonth(last6MonthKeys, contracts, (c) => c.start_date),
+    [last6MonthKeys, contracts]
+  );
+
+  const seriesInvInt = useMemo<AreaSeries[]>(
+    () => [
+      { name: "Invitaciones", values: invitations6m, color: "#1976d2" },
+      { name: "Entrevistas", values: interviews6m, color: "#2e7d32" },
+    ],
+    [invitations6m, interviews6m]
+  );
+
+  const seriesIntPnlContr = useMemo<AreaSeries[]>(
+    () => [
+      { name: "Entrevistas", values: interviews6m, color: "#1976d2" },
+      { name: "PnL", values: pnl6m, color: "#ed6c02" },
+      { name: "Contrataciones", values: contracts6m, color: "#9c27b0" },
+    ],
+    [interviews6m, pnl6m, contracts6m]
+  );
+
   const liqJornadasNow = liqPreview?.pool?.total_jornadas ?? 0;
 
   return (
@@ -378,6 +586,34 @@ export default function DashboardPage() {
       </Grid>
 
       <Grid container spacing={2} sx={{ mb: 2 }}>
+        <Grid size={{ xs: 12, md: 6 }}>
+          <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, height: "100%" }}>
+            <Stack spacing={1}>
+              <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
+                  Invitaciones y Entrevistas (últimos 6 meses)
+                </Typography>
+                <SeriesLegend series={seriesInvInt} />
+              </Stack>
+              <AreaLineChart labels={last6MonthLabels} series={seriesInvInt} height={220} />
+            </Stack>
+          </Paper>
+        </Grid>
+
+        <Grid size={{ xs: 12, md: 6 }}>
+          <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, height: "100%" }}>
+            <Stack spacing={1}>
+              <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
+                  Entrevistas, PnL y Contrataciones (últimos 6 meses)
+                </Typography>
+                <SeriesLegend series={seriesIntPnlContr} />
+              </Stack>
+              <AreaLineChart labels={last6MonthLabels} series={seriesIntPnlContr} height={220} />
+            </Stack>
+          </Paper>
+        </Grid>
+
         <Grid size={{ xs: 12, md: 6 }}>
           <DonutCard
             title="Estado laboral (alumnos)"

@@ -8,11 +8,12 @@ import {
   TableBody,
   TableCell,
   TableHead,
+  TablePagination,
   TableRow,
   TextField,
   Typography,
 } from "@mui/material";
-import { Link as RouterLink } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import api from "../lib/api";
 import type { Student } from "../types";
 import DownloadIcon from "@mui/icons-material/Download";
@@ -32,11 +33,25 @@ type StudentLite = {
   email: string;
 };
 
+function fmtBirthDateDdMmYyyy(v?: string | null): string {
+  const s = (v || "").toString();
+  if (!s) return "";
+  const iso = s.length >= 10 ? s.slice(0, 10) : s;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!m) return iso;
+  return `${m[3]}/${m[2]}/${m[1]}`;
+}
+
 export default function StudentsListPage() {
+  const navigate = useNavigate();
+
   const [q, setQ] = React.useState("");
   const [students, setStudents] = React.useState<Student[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+
+  const [page, setPage] = React.useState(0);
+  const [rowsPerPage, setRowsPerPage] = React.useState(10);
 
   React.useEffect(() => {
     let cancel = false;
@@ -72,7 +87,7 @@ export default function StudentsListPage() {
         apellidos: s.last_names,
         dniNie: s.dni_nie,
         nss: s.social_security_number ?? "",
-        fechaNacimiento: s.birth_date ?? "",
+        fechaNacimiento: fmtBirthDateDdMmYyyy(s.birth_date),
         distrito: s.district ?? "",
         telefono: s.phone ?? "",
         email: s.email ?? "",
@@ -91,6 +106,17 @@ export default function StudentsListPage() {
         hay(s.email)
     );
   }, [students, q]);
+
+  React.useEffect(() => {
+    // Cuando cambia el filtro, volvemos a la primera página.
+    setPage(0);
+  }, [q]);
+
+  const pagedRows = React.useMemo(() => {
+    const start = page * rowsPerPage;
+    const end = start + rowsPerPage;
+    return rows.slice(start, end);
+  }, [rows, page, rowsPerPage]);
 
   const onExport = React.useCallback(() => {
     const cols: CsvColumn<StudentLite>[] = [
@@ -128,56 +154,78 @@ export default function StudentsListPage() {
         <Table size="small">
           <TableHead>
             <TableRow>
-              <TableCell>Nº EXPEDIENTE</TableCell>
-              <TableCell>NOMBRES</TableCell>
-              <TableCell>APELLIDOS</TableCell>
-              <TableCell>DNI / NIE</TableCell>
-              <TableCell>Nº SEG. SOCIAL</TableCell>
-              <TableCell>FECHA NACIMIENTO</TableCell>
-              <TableCell>DISTRITO</TableCell>
-              <TableCell>TELÉFONO</TableCell>
-              <TableCell>EMAIL</TableCell>
-              <TableCell>ACCIONES</TableCell>
+              <TableCell sx={{ whiteSpace: "nowrap" }}>Nº Exp.</TableCell>
+              <TableCell sx={{ whiteSpace: "nowrap" }}>NOMBRES</TableCell>
+              <TableCell sx={{ whiteSpace: "nowrap" }}>APELLIDOS</TableCell>
+              <TableCell sx={{ whiteSpace: "nowrap" }}>DNI / NIE</TableCell>
+              <TableCell sx={{ whiteSpace: "nowrap" }}>Nº SEG. SOC.</TableCell>
+              <TableCell sx={{ whiteSpace: "nowrap" }}>FECHA NAC.</TableCell>
+              <TableCell sx={{ whiteSpace: "nowrap" }}>DISTRITO</TableCell>
+              <TableCell sx={{ whiteSpace: "nowrap" }}>TELÉFONO</TableCell>
+              <TableCell sx={{ whiteSpace: "nowrap" }}>EMAIL</TableCell>
             </TableRow>
           </TableHead>
-        <TableBody>
+          <TableBody>
             {loading && (
               <TableRow>
-                <TableCell colSpan={10} align="center">Cargando…</TableCell>
+                <TableCell colSpan={9} align="center">
+                  Cargando…
+                </TableCell>
               </TableRow>
             )}
             {!loading && error && (
               <TableRow>
-                <TableCell colSpan={10} align="center">Error: {error}</TableCell>
-              </TableRow>
-            )}
-            {!loading && !error && rows.map((s) => (
-              <TableRow key={s.id} hover>
-                <TableCell>{s.expediente}</TableCell>
-                <TableCell>{s.nombres}</TableCell>
-                <TableCell>{s.apellidos}</TableCell>
-                <TableCell>{s.dniNie}</TableCell>
-                <TableCell>{s.nss || "-"}</TableCell>
-                <TableCell>{s.fechaNacimiento || "-"}</TableCell>
-                <TableCell>{s.distrito || "-"}</TableCell>
-                <TableCell>{s.telefono || "-"}</TableCell>
-                <TableCell>{s.email || "-"}</TableCell>
-                <TableCell>
-                  <Button component={RouterLink} to={`/students/${s.id}`} size="small">
-                    Ver Detalle
-                  </Button>
+                <TableCell colSpan={9} align="center">
+                  Error: {error}
                 </TableCell>
               </TableRow>
-            ))}
+            )}
+            {!loading && !error &&
+              pagedRows.map((s) => (
+                <TableRow
+                  key={s.id}
+                  hover
+                  sx={{ cursor: "pointer" }}
+                  onClick={() => navigate(`/students/${s.id}`)}
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") navigate(`/students/${s.id}`);
+                  }}
+                >
+                  <TableCell sx={{ whiteSpace: "nowrap" }}>{s.expediente}</TableCell>
+                  <TableCell>{s.nombres}</TableCell>
+                  <TableCell>{s.apellidos}</TableCell>
+                  <TableCell sx={{ whiteSpace: "nowrap" }}>{s.dniNie}</TableCell>
+                  <TableCell sx={{ whiteSpace: "nowrap" }}>{s.nss || "-"}</TableCell>
+                  <TableCell sx={{ whiteSpace: "nowrap" }}>{s.fechaNacimiento || "-"}</TableCell>
+                  <TableCell>{s.distrito || "-"}</TableCell>
+                  <TableCell sx={{ whiteSpace: "nowrap" }}>{s.telefono || "-"}</TableCell>
+                  <TableCell>{s.email || "-"}</TableCell>
+                </TableRow>
+              ))}
             {!loading && !error && rows.length === 0 && (
               <TableRow>
-                <TableCell colSpan={10} align="center">
+                <TableCell colSpan={9} align="center">
                   No hay resultados
                 </TableCell>
               </TableRow>
             )}
           </TableBody>
         </Table>
+
+        <TablePagination
+          component="div"
+          count={rows.length}
+          page={page}
+          onPageChange={(_, newPage) => setPage(newPage)}
+          rowsPerPage={rowsPerPage}
+          onRowsPerPageChange={(e) => {
+            setRowsPerPage(Number(e.target.value));
+            setPage(0);
+          }}
+          rowsPerPageOptions={[10, 20, 50, 100]}
+          labelRowsPerPage="Filas por página"
+        />
       </Paper>
     </Box>
   );

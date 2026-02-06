@@ -1,21 +1,21 @@
 import { useMemo, useState, useEffect } from "react";
 import {
   Box,
+  Chip,
+  InputAdornment,
   Paper,
   Stack,
-  Typography,
-  TextField,
-  InputAdornment,
   Table,
-  TableHead,
-  TableRow,
-  TableCell,
   TableBody,
-  Chip,
-  Button,
+  TableCell,
+  TableHead,
+  TablePagination,
+  TableRow,
+  TextField,
+  Typography,
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
-import { Link as RouterLink } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import api from "../lib/api";
 import type { Company, Vacancy } from "../types";
 
@@ -31,11 +31,16 @@ function sectorChip(sector?: string | null) {
 }
 
 export default function CompaniesListPage() {
+  const navigate = useNavigate();
+
   const [q, setQ] = useState("");
   const [companies, setCompanies] = useState<Company[]>([]);
   const [vacancies, setVacancies] = useState<Vacancy[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
 
   useEffect(() => {
     let cancel = false;
@@ -94,6 +99,17 @@ export default function CompaniesListPage() {
     );
   }, [q, companies, openByCompany]);
 
+  useEffect(() => {
+    // Cuando cambia el filtro, volvemos a la primera página.
+    setPage(0);
+  }, [q]);
+
+  const pagedRows = useMemo(() => {
+    const start = page * rowsPerPage;
+    const end = start + rowsPerPage;
+    return rows.slice(start, end);
+  }, [rows, page, rowsPerPage]);
+
   return (
     <Box>
       <Stack direction="row" alignItems="center" justifyContent="space-between" mb={2}>
@@ -121,22 +137,35 @@ export default function CompaniesListPage() {
               <TableCell>Sector</TableCell>
               <TableCell>Vacantes</TableCell>
               <TableCell>Contacto</TableCell>
-              <TableCell align="right">Acciones</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {loading && (
               <TableRow>
-                <TableCell colSpan={5} align="center">Cargando…</TableCell>
+                <TableCell colSpan={4} align="center">
+                  Cargando…
+                </TableCell>
               </TableRow>
             )}
             {!loading && error && (
               <TableRow>
-                <TableCell colSpan={5} align="center">Error: {error}</TableCell>
+                <TableCell colSpan={4} align="center">
+                  Error: {error}
+                </TableCell>
               </TableRow>
             )}
-            {!loading && !error && rows.map((c) => (
-                <TableRow key={c.id} hover>
+            {!loading && !error &&
+              pagedRows.map((c) => (
+                <TableRow
+                  key={c.id}
+                  hover
+                  sx={{ cursor: "pointer" }}
+                  onClick={() => navigate(`/companies/${c.id}`)}
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") navigate(`/companies/${c.id}`);
+                  }}
+                >
                   <TableCell>
                     <Stack spacing={0.2}>
                       <Typography variant="body2" sx={{ fontWeight: 600 }}>
@@ -164,22 +193,31 @@ export default function CompaniesListPage() {
                       </Typography>
                     </Stack>
                   </TableCell>
-                  <TableCell align="right">
-                    <Button component={RouterLink} to={`/companies/${c.id}`} size="small">
-                      Ver detalle
-                    </Button>
-                  </TableCell>
                 </TableRow>
-            ))}
+              ))}
             {!loading && !error && rows.length === 0 && (
               <TableRow>
-                <TableCell colSpan={5} align="center" sx={{ py: 4, color: "text.secondary" }}>
+                <TableCell colSpan={4} align="center" sx={{ py: 4, color: "text.secondary" }}>
                   No hay resultados
                 </TableCell>
               </TableRow>
             )}
           </TableBody>
         </Table>
+
+        <TablePagination
+          component="div"
+          count={rows.length}
+          page={page}
+          onPageChange={(_, newPage) => setPage(newPage)}
+          rowsPerPage={rowsPerPage}
+          onRowsPerPageChange={(e) => {
+            setRowsPerPage(Number(e.target.value));
+            setPage(0);
+          }}
+          rowsPerPageOptions={[10, 20, 50, 100]}
+          labelRowsPerPage="Filas por página"
+        />
       </Paper>
     </Box>
   );
