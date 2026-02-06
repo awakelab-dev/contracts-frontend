@@ -21,7 +21,7 @@ import {
 } from "@mui/material";
 import api from "../lib/api";
 import type { Vacancy, Company, Student, Interview } from "../types";
-import { computeMatchingScore, scoreColor } from "../utils/MatchingEngine";
+import { scoreColor } from "../utils/MatchingEngine";
 import { formatDateDMY } from "../utils/date";
 
 function statusChip(s: Vacancy["status"]) {
@@ -40,10 +40,12 @@ export default function VacancyDetailPage() {
     else navigate("/vacancies");
   };
 
+  type MatchingStudentApiRow = Student & { score: number; matched_topics_count: number };
+
   const [vacancy, setVacancy] = useState<Vacancy | null>(null);
   const [company, setCompany] = useState<Company | null>(null);
   const [companies, setCompanies] = useState<Company[]>([]);
-  const [students, setStudents] = useState<Student[]>([]);
+  const [recommended, setRecommended] = useState<Array<{ student: Student; score: number }>>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -95,17 +97,19 @@ export default function VacancyDetailPage() {
         setVacancy(data);
         return Promise.all([
           api.get<Company>(`/companies/${data.company_id}`),
-          api.get<Student[]>(`/students`),
           api.get<Company[]>(`/companies`),
+          api.get<MatchingStudentApiRow[]>(`/matching/students`, { params: { vacancyId: data.id, limit: 50 } }),
         ]);
       })
       .then((res) => {
         if (cancel) return;
         if (res) {
-          const [cRes, sRes, cAllRes] = res;
+          const [cRes, cAllRes, mRes] = res;
           setCompany(cRes.data);
-          setStudents(Array.isArray(sRes.data) ? sRes.data : []);
           setCompanies(Array.isArray(cAllRes.data) ? cAllRes.data : []);
+
+          const mr = Array.isArray(mRes.data) ? mRes.data : [];
+          setRecommended(mr.slice(0, 5).map((s) => ({ student: s, score: s.score })));
         }
       })
       .catch((err) => {
@@ -132,14 +136,6 @@ export default function VacancyDetailPage() {
       .filter(Boolean);
   }, [vacancy?.requirements]);
 
-  const recommended = useMemo(() => {
-    if (!vacancy) return [] as { student: Student; score: number }[];
-    return students
-      .map((s) => ({ student: s, score: computeMatchingScore(s, vacancy) }))
-      .filter((x) => x.score > 0)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 5);
-  }, [students, vacancy]);
 
   function openCreateVacancy() {
     setActionError(null);

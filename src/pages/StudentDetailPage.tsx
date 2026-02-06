@@ -27,7 +27,7 @@ import {
 } from "@mui/material";
 import api from "../lib/api";
 import type { Company, Interview, Student, Vacancy } from "../types";
-import { computeMatchingScore, scoreColor } from "../utils/MatchingEngine";
+import { scoreColor } from "../utils/MatchingEngine";
 import { formatDateDMY } from "../utils/date";
 import DateTextField from "../components/DateTextField";
 
@@ -84,6 +84,11 @@ type HiringContractRow = {
   weekly_hours?: number | null;
   contributed_days?: number | null;
   notes?: string | null;
+};
+
+type MatchingVacancyApiRow = Vacancy & {
+  score: number;
+  matched_topics_count: number;
 };
 
 const CONTRACT_TYPE_OPTIONS = ["Indefinido", "Duración Determinada", "Temporal"] as const;
@@ -237,6 +242,8 @@ export default function StudentDetailPage() {
   const [vacancies, setVacancies] = useState<Vacancy[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
 
+  const [recommended, setRecommended] = useState<Array<{ vacancy: Vacancy; score: number }>>([]);
+
   const [courses, setCourses] = useState<StudentCourse[]>([]);
   const [interviews, setInterviews] = useState<Interview[]>([]);
   const [invitations, setInvitations] = useState<InvitationRow[]>([]);
@@ -386,17 +393,6 @@ export default function StudentDetailPage() {
     return m;
   }, [companies]);
 
-  const recommended = useMemo(() => {
-    if (!student || vacancies.length === 0) return [] as { vacancy: Vacancy; score: number }[];
-
-    const scored = vacancies
-      .filter((v) => v.status === "open")
-      .map((v) => ({ vacancy: v, score: computeMatchingScore(student, v) }));
-
-    return scored
-      .filter((x) => x.score > 0)
-      .sort((a, b) => b.score - a.score);
-  }, [student, vacancies]);
 
   const lastCourses = useMemo(() => {
     return [...courses]
@@ -456,7 +452,7 @@ export default function StudentDetailPage() {
 
   async function fetchAll(currentSid: string) {
     const n = Number(currentSid);
-    const [sRes, vRes, cRes, iRes, scRes, invRes, pnlRes, hcRes] = await Promise.all([
+    const [sRes, vRes, cRes, iRes, scRes, invRes, pnlRes, hcRes, mRes] = await Promise.all([
       api.get<Student>(`/students/${currentSid}`),
       api.get<Vacancy[]>(`/vacancies`),
       api.get<Company[]>(`/companies`),
@@ -465,7 +461,10 @@ export default function StudentDetailPage() {
       api.get<InvitationRow[]>(`/invitations`, { params: { student_id: n } }),
       api.get<PnlRow[]>(`/pnl`, { params: { student_id: n } }),
       api.get<HiringContractRow[]>(`/hiring-contracts`, { params: { student_id: n } }),
+      api.get<MatchingVacancyApiRow[]>(`/matching/vacancies`, { params: { studentId: n, limit: 500 } }),
     ]);
+
+    const rec = Array.isArray(mRes.data) ? mRes.data : [];
 
     return {
       student: sRes.data,
@@ -476,6 +475,9 @@ export default function StudentDetailPage() {
       invitations: Array.isArray(invRes.data) ? invRes.data : [],
       pnlRows: Array.isArray(pnlRes.data) ? pnlRes.data : [],
       contracts: Array.isArray(hcRes.data) ? hcRes.data : [],
+      recommended: rec
+        .map((v) => ({ vacancy: v, score: Number((v as any).score) }))
+        .filter((x) => Number.isFinite(x.score) && x.score >= 50),
     };
   }
 
@@ -499,6 +501,7 @@ export default function StudentDetailPage() {
         setInvitations(data.invitations);
         setPnlRows(data.pnlRows);
         setContracts(data.contracts);
+        setRecommended(data.recommended);
       })
       .catch((err) => {
         if (cancel) return;

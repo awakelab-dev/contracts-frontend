@@ -360,7 +360,7 @@ export default function ReportsPage() {
               disabled
               sx={{ alignSelf: { xs: "stretch", sm: "auto" } }}
             >
-              Exportar PDF
+              Exportar
             </Button>
           </Stack>
         </Stack>
