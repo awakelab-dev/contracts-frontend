@@ -93,8 +93,8 @@ export default function SettingsPage() {
     setSaved(true);
   };
 
-  const onLogout = () => {
-    logout();
+  const onLogout = async () => {
+    await logout();
     navigate("/login");
   };
 

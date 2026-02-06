@@ -488,6 +488,44 @@ export default function LiquidacionPage() {
               </Alert>
             )}
 
+            {preview && (
+              <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+                <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                  Resumen (previsualización)
+                </Typography>
+                <Grid container spacing={2}>
+                  <Grid size={{ xs: 12, md: 3 }}>
+                    <Typography variant="caption" color="text.secondary">
+                      Días disponibles (total)
+                    </Typography>
+                    <Typography variant="h6">{preview.pool.total_available_fte_days.toFixed(2)}</Typography>
+                  </Grid>
+                  <Grid size={{ xs: 12, md: 3 }}>
+                    <Typography variant="caption" color="text.secondary">
+                      Jornadas posibles ({targetLabel(target)})
+                    </Typography>
+                    <Typography variant="h6">{preview.pool.total_jornadas}</Typography>
+                  </Grid>
+                  <Grid size={{ xs: 12, md: 3 }}>
+                    <Typography variant="caption" color="text.secondary">
+                      Días a liquidar
+                    </Typography>
+                    <Typography variant="h6">{preview.pool.total_used_fte_days.toFixed(2)}</Typography>
+                  </Grid>
+                  <Grid size={{ xs: 12, md: 3 }}>
+                    <Typography variant="caption" color="text.secondary">
+                      Remanente
+                    </Typography>
+                    <Typography variant="h6">{preview.pool.total_remainder_fte_days.toFixed(2)}</Typography>
+                  </Grid>
+                </Grid>
+                <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
+                  Modo actual: {modeLabel(mode)}. En modo Individual, las jornadas se calculan por alumno; en modo Combinada,
+                  se suman los días de todos los alumnos para completar jornadas.
+                </Typography>
+              </Paper>
+            )}
+
             <Paper variant="outlined" sx={{ borderRadius: 2, overflow: "hidden" }}>
               <Table size="small">
                 <TableHead>
@@ -545,44 +583,6 @@ export default function LiquidacionPage() {
                 </TableBody>
               </Table>
             </Paper>
-
-            {preview && (
-              <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
-                <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                  Resumen (previsualización)
-                </Typography>
-                <Grid container spacing={2}>
-                  <Grid size={{ xs: 12, md: 3 }}>
-                    <Typography variant="caption" color="text.secondary">
-                      Días disponibles (total)
-                    </Typography>
-                    <Typography variant="h6">{preview.pool.total_available_fte_days.toFixed(2)}</Typography>
-                  </Grid>
-                  <Grid size={{ xs: 12, md: 3 }}>
-                    <Typography variant="caption" color="text.secondary">
-                      Jornadas posibles ({targetLabel(target)})
-                    </Typography>
-                    <Typography variant="h6">{preview.pool.total_jornadas}</Typography>
-                  </Grid>
-                  <Grid size={{ xs: 12, md: 3 }}>
-                    <Typography variant="caption" color="text.secondary">
-                      Días a liquidar
-                    </Typography>
-                    <Typography variant="h6">{preview.pool.total_used_fte_days.toFixed(2)}</Typography>
-                  </Grid>
-                  <Grid size={{ xs: 12, md: 3 }}>
-                    <Typography variant="caption" color="text.secondary">
-                      Remanente
-                    </Typography>
-                    <Typography variant="h6">{preview.pool.total_remainder_fte_days.toFixed(2)}</Typography>
-                  </Grid>
-                </Grid>
-                <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
-                  Modo actual: {modeLabel(mode)}. En modo Individual, las jornadas se calculan por alumno; en modo Combinada,
-                  se suman los días de todos los alumnos para completar jornadas.
-                </Typography>
-              </Paper>
-            )}
 
             {executeError && (
               <Alert severity="error" onClose={() => setExecuteError(null)}>

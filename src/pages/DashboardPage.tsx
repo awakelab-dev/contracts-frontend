@@ -54,6 +54,7 @@ type PnlRow = {
 
 type HiringContractRow = {
   id: number;
+  student_id: number;
   start_date?: string;
   company_name: string;
   sector?: string | null;
@@ -238,6 +239,93 @@ function AreaLineChart({ labels, series, height = 220 }: { labels: string[]; ser
   );
 }
 
+function BarChart({
+  labels,
+  values,
+  color = "#1976d2",
+  height = 220,
+  yMaxOverride,
+  valueSuffix,
+}: {
+  labels: string[];
+  values: number[];
+  color?: string;
+  height?: number;
+  yMaxOverride?: number;
+  valueSuffix?: string;
+}) {
+  const W = 720;
+  const H = 260;
+  const padding = { l: 44, r: 14, t: 16, b: 34 };
+
+  const n = labels.length;
+  const plotW = W - padding.l - padding.r;
+  const plotH = H - padding.t - padding.b;
+  const baseY = padding.t + plotH;
+
+  const maxVal = Math.max(0, ...values.map((v) => (Number.isFinite(v) ? v : 0)));
+  const yMax = Number.isFinite(yMaxOverride) ? Math.max(1, Number(yMaxOverride)) : niceCeil(maxVal * 1.1);
+
+  const y = (v: number) => padding.t + plotH * (1 - Math.max(0, v) / (yMax || 1));
+
+  const ticks = [0, Math.round(yMax / 3), Math.round((2 * yMax) / 3), yMax].filter((v, i, a) => a.indexOf(v) === i);
+
+  const slotW = n > 0 ? plotW / n : plotW;
+  const gap = Math.min(10, slotW * 0.2);
+  const barW = Math.max(6, slotW - gap);
+
+  return (
+    <Box sx={{ width: "100%", height }}>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" height="100%" role="img">
+        {/* horizontal grid */}
+        {ticks.map((tv) => {
+          const yy = y(tv);
+          return (
+            <g key={tv}>
+              <line x1={padding.l} x2={W - padding.r} y1={yy} y2={yy} stroke="rgba(0,0,0,0.08)" strokeWidth={1} />
+              <text x={padding.l - 10} y={yy + 4} textAnchor="end" fontSize={11} fill="rgba(0,0,0,0.55)">
+                {tv}
+                {valueSuffix && yMaxOverride === 100 ? valueSuffix : ""}
+              </text>
+            </g>
+          );
+        })}
+
+        {/* bars */}
+        {labels.map((_, i) => {
+          const v = Number(values[i] ?? 0) || 0;
+          const x = padding.l + i * slotW + gap / 2;
+          const yy = y(v);
+          const h = Math.max(0, baseY - yy);
+
+          return (
+            <g key={i}>
+              <rect x={x} y={yy} width={barW} height={h} rx={4} fill={color} opacity={0.9} />
+              <text x={x + barW / 2} y={yy - 6} textAnchor="middle" fontSize={11} fill="rgba(0,0,0,0.6)">
+                {valueSuffix ? `${Math.round(v)}${valueSuffix}` : Math.round(v)}
+              </text>
+            </g>
+          );
+        })}
+
+        {/* axis lines */}
+        <line x1={padding.l} x2={padding.l} y1={padding.t} y2={baseY} stroke="rgba(0,0,0,0.12)" strokeWidth={1} />
+        <line x1={padding.l} x2={W - padding.r} y1={baseY} y2={baseY} stroke="rgba(0,0,0,0.12)" strokeWidth={1} />
+
+        {/* x labels */}
+        {labels.map((lbl, i) => {
+          const cx = padding.l + i * slotW + slotW / 2;
+          return (
+            <text key={lbl + i} x={cx} y={H - 12} textAnchor="middle" fontSize={11} fill="rgba(0,0,0,0.55)">
+              {lbl}
+            </text>
+          );
+        })}
+      </svg>
+    </Box>
+  );
+}
+
 function SeriesLegend({ series }: { series: AreaSeries[] }) {
   return (
     <Stack direction="row" spacing={1.5} useFlexGap flexWrap="wrap" alignItems="center">
@@ -314,24 +402,38 @@ function DonutChart({ slices, size = 88, thickness = 14 }: { slices: DonutSlice[
   );
 }
 
-function DonutCard({ title, slices }: { title: string; slices: DonutSlice[] }) {
+function DonutCard({
+  title,
+  slices,
+  chartSize = 90,
+  chartThickness = 14,
+  titleAlign = "left",
+}: {
+  title: string;
+  slices: DonutSlice[];
+  chartSize?: number;
+  chartThickness?: number;
+  titleAlign?: "left" | "right";
+}) {
   return (
     <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, height: "100%" }}>
-      <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1 }}>
+      <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1, textAlign: titleAlign }}>
         {title}
       </Typography>
-      <Stack direction="row" spacing={2} alignItems="center">
-        <DonutChart slices={slices} size={90} thickness={14} />
-        <Stack spacing={0.4} sx={{ flex: 1 }}>
+
+      <Stack direction="row" spacing={3} alignItems="center">
+        <Box sx={{ flex: 1, display: "flex", justifyContent: "center" }}>
+          <DonutChart slices={slices} size={chartSize} thickness={chartThickness} />
+        </Box>
+
+        <Stack spacing={0.4} sx={{ flex: 1, minWidth: 0 }}>
           {slices.map((s) => (
-            <Stack key={s.label} direction="row" spacing={1} alignItems="center" justifyContent="space-between">
-              <Stack direction="row" spacing={1} alignItems="center">
-                <Box sx={{ width: 10, height: 10, borderRadius: 99, bgcolor: s.color }} />
-                <Typography variant="caption" color="text.secondary">
-                  {s.label}
-                </Typography>
-              </Stack>
-              <Typography variant="caption" sx={{ fontWeight: 700 }}>
+            <Stack key={s.label} direction="row" spacing={1} alignItems="center" sx={{ flexWrap: "wrap" }}>
+              <Box sx={{ width: 10, height: 10, borderRadius: 99, bgcolor: s.color }} />
+              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
+                {s.label}:
+              </Typography>
+              <Typography variant="caption" sx={{ fontWeight: 900 }}>
                 {s.value}
               </Typography>
             </Stack>
@@ -448,18 +550,6 @@ export default function DashboardPage() {
     };
   }, []);
 
-  const employmentCounts = useMemo(() => {
-    const c = { unemployed: 0, employed: 0, improved: 0, unknown: 0 };
-    students.forEach((s) => {
-      const v = (s.employment_status || "unknown").toString().toLowerCase();
-      if (v === "unemployed") c.unemployed += 1;
-      else if (v === "employed") c.employed += 1;
-      else if (v === "improved") c.improved += 1;
-      else c.unknown += 1;
-    });
-    return c;
-  }, [students]);
-
   const invCounts = useMemo(() => {
     const c = { sent: 0, accepted: 0, rejected: 0, expired: 0 };
     invitations.forEach((i) => {
@@ -508,6 +598,9 @@ export default function DashboardPage() {
   const last6MonthKeys = useMemo(() => lastNMonthKeys(6), []);
   const last6MonthLabels = useMemo(() => last6MonthKeys.map(monthLabelFromKey), [last6MonthKeys]);
 
+  const last12MonthKeys = useMemo(() => lastNMonthKeys(12), []);
+  const last12MonthLabels = useMemo(() => last12MonthKeys.map(monthLabelFromKey), [last12MonthKeys]);
+
   const invitations6m = useMemo(
     () => countByMonth(last6MonthKeys, invitations, (i) => i.sent_at),
     [last6MonthKeys, invitations]
@@ -521,6 +614,29 @@ export default function DashboardPage() {
     () => countByMonth(last6MonthKeys, contracts, (c) => c.start_date),
     [last6MonthKeys, contracts]
   );
+
+  const incorporados12m = useMemo(() => {
+    const map = new Map<string, Set<number>>();
+    last12MonthKeys.forEach((k) => map.set(k, new Set<number>()));
+
+    contracts.forEach((c) => {
+      const key = monthKeyFromValue(c.start_date);
+      if (!key) return;
+      const set = map.get(key);
+      if (!set) return;
+      const sid = Number(c.student_id);
+      if (!Number.isFinite(sid)) return;
+      set.add(sid);
+    });
+
+    return last12MonthKeys.map((k) => map.get(k)?.size || 0);
+  }, [contracts, last12MonthKeys]);
+
+  const insercionLaboral12m = useMemo(() => {
+    const total = summary?.total_students ?? students.length;
+    if (!total) return last12MonthKeys.map(() => 0);
+    return incorporados12m.map((n) => Math.max(0, Math.min(100, (n / total) * 100)));
+  }, [incorporados12m, last12MonthKeys, students.length, summary?.total_students]);
 
   const seriesInvInt = useMemo<AreaSeries[]>(
     () => [
@@ -616,28 +732,40 @@ export default function DashboardPage() {
         </Grid>
 
         <Grid size={{ xs: 12, md: 6 }}>
-          <DonutCard
-            title="Estado laboral (alumnos)"
-            slices={[
-              { label: "Desempleado", value: employmentCounts.unemployed, color: "#1976d2" },
-              { label: "Empleado", value: employmentCounts.employed, color: "#2e7d32" },
-              { label: "Mejor opción", value: employmentCounts.improved, color: "#ed6c02" },
-              { label: "Desconocido", value: employmentCounts.unknown, color: "#9e9e9e" },
-            ]}
-          />
+          <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, height: "100%" }}>
+            <Stack spacing={1}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
+                Laboral (incorporaciones) (últimos 12 meses)
+              </Typography>
+              <BarChart labels={last12MonthLabels} values={incorporados12m} color="#2e7d32" height={220} />
+            </Stack>
+          </Paper>
         </Grid>
+
         <Grid size={{ xs: 12, md: 6 }}>
-          <DonutCard
-            title="Vacantes (estado)"
-            slices={[
-              { label: "Abiertas", value: vacancyCounts.open, color: "#2e7d32" },
-              { label: "Cerradas", value: vacancyCounts.closed, color: "#9e9e9e" },
-            ]}
-          />
+          <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, height: "100%" }}>
+            <Stack spacing={1}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
+                Inserción Laboral (últimos 12 meses)
+              </Typography>
+              <BarChart
+                labels={last12MonthLabels}
+                values={insercionLaboral12m}
+                color="#1976d2"
+                height={220}
+                yMaxOverride={100}
+                valueSuffix="%"
+              />
+            </Stack>
+          </Paper>
         </Grid>
+
         <Grid size={{ xs: 12, md: 6 }}>
           <DonutCard
             title="Invitaciones (estado)"
+            titleAlign="right"
+            chartSize={152}
+            chartThickness={24}
             slices={[
               { label: "Enviadas", value: invCounts.sent, color: "#1976d2" },
               { label: "Aceptadas", value: invCounts.accepted, color: "#2e7d32" },
@@ -649,6 +777,9 @@ export default function DashboardPage() {
         <Grid size={{ xs: 12, md: 6 }}>
           <DonutCard
             title="Entrevistas (estado)"
+            titleAlign="right"
+            chartSize={152}
+            chartThickness={24}
             slices={[
               { label: "Enviadas", value: interviewCounts.sent, color: "#1976d2" },
               { label: "Asistidas", value: interviewCounts.attended, color: "#2e7d32" },
