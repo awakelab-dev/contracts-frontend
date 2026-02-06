@@ -25,6 +25,7 @@ import SendIcon from "@mui/icons-material/Send";
 import DownloadIcon from "@mui/icons-material/Download";
 import EmailIcon from "@mui/icons-material/Email";
 import InsightsIcon from "@mui/icons-material/Insights";
+import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
 import SettingsIcon from "@mui/icons-material/Settings";
 import EventIcon from "@mui/icons-material/Event";
 import { useNavigate, Outlet } from "react-router-dom";
@@ -41,6 +42,7 @@ const menu = [
   { to: "/invitations", text: "Invitaciones", icon: <SendIcon /> },
   { to: "/import", text: "Importación", icon: <DownloadIcon /> },
   { to: "/emails", text: "Plantillas Email", icon: <EmailIcon /> },
+  { to: "/liquidacion", text: "Liquidación", icon: <ReceiptLongIcon /> },
   { to: "/reports", text: "Informes", icon: <InsightsIcon /> },
   { to: "/settings", text: "Configuración", icon: <SettingsIcon /> },
 ];

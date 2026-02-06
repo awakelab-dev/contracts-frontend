@@ -12,6 +12,7 @@ import InterviewsListPage from "./pages/InterviewsListPage";
 import ImportPage from "./pages/ImportPage";
 import EmailTemplatesPage from "./pages/EmailTemplatesPage";
 import ReportsPage from "./pages/ReportsPage";
+import LiquidacionPage from "./pages/LiquidacionPage";
 import SettingsPage from "./pages/SettingsPage";
 import LoginPage from "./pages/LoginPage";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -45,6 +46,7 @@ export default function App() {
           <Route path="invitations" element={<InvitationsPage />} />
           <Route path="import" element={<ImportPage />} />
           <Route path="emails" element={<EmailTemplatesPage />} />
+          <Route path="liquidacion" element={<LiquidacionPage />} />
           <Route path="reports" element={<ReportsPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
