@@ -4,13 +4,22 @@ function normalizeBaseUrl(raw: string): string {
   const v = raw.trim();
   if (!v) return v;
 
-  // If someone pasted a full endpoint (e.g. http://localhost:4000/auth), keep only the origin.
-  // Also strip any trailing slashes.
+  // Keep optional base path (e.g. https://domain.com/api) but strip a trailing "/auth"
+  // to avoid ending up with "/auth/auth/login".
+  const trimmed = v.replace(/\/+$/, "");
+
   try {
-    const u = new URL(v);
-    return u.origin;
+    const u = new URL(trimmed);
+
+    // Remove trailing slashes and a final "/auth" segment only.
+    let path = (u.pathname || "/").replace(/\/+$/, "");
+    path = path.replace(/\/auth$/, "");
+    path = path.replace(/\/+$/, "");
+
+    return u.origin + path;
   } catch {
-    return v.replace(/\/+$/, "");
+    // Non-URL fallback (best-effort): remove trailing /auth and trailing slashes.
+    return trimmed.replace(/\/auth$/, "").replace(/\/+$/, "");
   }
 }
 
