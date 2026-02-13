@@ -1,8 +1,13 @@
 import { useMemo, useState, useEffect } from "react";
 import {
+  Alert,
   Box,
   Button,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   InputAdornment,
   MenuItem,
   Paper,
@@ -39,6 +44,25 @@ export default function VacanciesListPage() {
 
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [vacancyDialogOpen, setVacancyDialogOpen] = useState(false);
+  const [vacancySaving, setVacancySaving] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionOk, setActionOk] = useState<string | null>(null);
+  const [vacancyForm, setVacancyForm] = useState<{
+    company_id: string;
+    title: string;
+    sector: string;
+    description: string;
+    requirements: string;
+    status: Vacancy["status"];
+  }>({
+    company_id: "",
+    title: "",
+    sector: "",
+    description: "",
+    requirements: "",
+    status: "open",
+  });
 
   useEffect(() => {
     let cancel = false;
@@ -66,6 +90,59 @@ export default function VacanciesListPage() {
       cancel = true;
     };
   }, []);
+
+  function openCreateVacancy() {
+    setActionError(null);
+    setActionOk(null);
+    setVacancyForm({
+      company_id: "",
+      title: "",
+      sector: "",
+      description: "",
+      requirements: "",
+      status: "open",
+    });
+    setVacancyDialogOpen(true);
+  }
+
+  async function saveVacancy() {
+    const title = vacancyForm.title.trim();
+    const companyId = Number(vacancyForm.company_id);
+
+    if (!title) {
+      setActionError("El título es obligatorio");
+      return;
+    }
+
+    if (!Number.isFinite(companyId)) {
+      setActionError("La empresa es obligatoria");
+      return;
+    }
+
+    try {
+      setActionError(null);
+      setActionOk(null);
+      setVacancySaving(true);
+
+      await api.post(`/vacancies`, {
+        company_id: companyId,
+        title,
+        sector: vacancyForm.sector || null,
+        description: vacancyForm.description || null,
+        requirements: vacancyForm.requirements || null,
+        status: vacancyForm.status,
+      });
+
+      const { data } = await api.get<Vacancy[]>("/vacancies");
+      setVacancies(Array.isArray(data) ? data : []);
+      setVacancyDialogOpen(false);
+      setActionOk("Vacante creada");
+    } catch (e: any) {
+      setActionError(e?.response?.data?.error || e?.message || "Error al guardar vacante");
+    } finally {
+      setVacancySaving(false);
+    }
+  }
 
   const companyName = useMemo(() => {
     const m = new Map<number, string>();
@@ -139,8 +216,22 @@ export default function VacanciesListPage() {
             <MenuItem value="closed">Cerradas</MenuItem>
           </TextField>
           <Button variant="outlined" size="small" startIcon={<DownloadIcon />} onClick={onExport}>Exportar CSV</Button>
+          <Button variant="contained" size="small" onClick={openCreateVacancy}>
+            Nueva vacante
+          </Button>
         </Stack>
       </Stack>
+
+      {actionOk && (
+        <Alert severity="success" sx={{ mb: 2 }} onClose={() => setActionOk(null)}>
+          {actionOk}
+        </Alert>
+      )}
+      {actionError && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setActionError(null)}>
+          {actionError}
+        </Alert>
+      )}
 
       <Paper>
         <Table>
@@ -219,6 +310,94 @@ export default function VacanciesListPage() {
           labelRowsPerPage="Filas por página"
         />
       </Paper>
+
+      <Dialog
+        open={vacancyDialogOpen}
+        onClose={() => setVacancyDialogOpen(false)}
+        fullWidth
+        maxWidth="md"
+      >
+        <DialogTitle>Nueva vacante</DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <TextField
+              label="Empresa"
+              select
+              size="small"
+              fullWidth
+              value={vacancyForm.company_id}
+              onChange={(e) => setVacancyForm((f) => ({ ...f, company_id: e.target.value }))}
+            >
+              {companies.map((c) => (
+                <MenuItem key={c.id} value={String(c.id)}>
+                  {c.name}
+                </MenuItem>
+              ))}
+            </TextField>
+
+            <TextField
+              label="Título"
+              size="small"
+              fullWidth
+              value={vacancyForm.title}
+              onChange={(e) => setVacancyForm((f) => ({ ...f, title: e.target.value }))}
+            />
+
+            <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
+              <TextField
+                label="Sector"
+                size="small"
+                fullWidth
+                value={vacancyForm.sector}
+                onChange={(e) => setVacancyForm((f) => ({ ...f, sector: e.target.value }))}
+              />
+              <TextField
+                label="Estado"
+                select
+                size="small"
+                fullWidth
+                value={vacancyForm.status}
+                onChange={(e) => setVacancyForm((f) => ({ ...f, status: e.target.value as Vacancy["status"] }))}
+              >
+                <MenuItem value="open">Abierta</MenuItem>
+                <MenuItem value="closed">Cerrada</MenuItem>
+              </TextField>
+            </Stack>
+
+            <TextField
+              label="Descripción"
+              size="small"
+              fullWidth
+              multiline
+              minRows={3}
+              value={vacancyForm.description}
+              onChange={(e) => setVacancyForm((f) => ({ ...f, description: e.target.value }))}
+            />
+
+            <TextField
+              label="Requisitos"
+              size="small"
+              fullWidth
+              multiline
+              minRows={3}
+              value={vacancyForm.requirements}
+              onChange={(e) => setVacancyForm((f) => ({ ...f, requirements: e.target.value }))}
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setVacancyDialogOpen(false)} disabled={vacancySaving}>
+            Cancelar
+          </Button>
+          <Button
+            variant="contained"
+            onClick={saveVacancy}
+            disabled={vacancySaving || !vacancyForm.title.trim() || !vacancyForm.company_id}
+          >
+            Guardar
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

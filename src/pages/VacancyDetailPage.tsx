@@ -137,20 +137,6 @@ export default function VacancyDetailPage() {
   }, [vacancy?.requirements]);
 
 
-  function openCreateVacancy() {
-    setActionError(null);
-    setActionOk(null);
-    setVacancyForm({
-      company_id: company?.id ? String(company.id) : "",
-      title: "",
-      sector: "",
-      description: "",
-      requirements: "",
-      status: "open",
-    });
-    setVacancyDialogOpen(true);
-  }
-
   function openEditVacancy() {
     if (!vacancy) return;
     setActionError(null);
@@ -169,15 +155,9 @@ export default function VacancyDetailPage() {
 
   async function saveVacancy() {
     const title = vacancyForm.title.trim();
-    const companyId = Number(vacancyForm.company_id);
 
     if (!title) {
       setActionError("El título es obligatorio");
-      return;
-    }
-
-    if (!vacancyForm.id && !Number.isFinite(companyId)) {
-      setActionError("La empresa es obligatoria");
       return;
     }
 
@@ -185,35 +165,19 @@ export default function VacancyDetailPage() {
       setActionError(null);
       setActionOk(null);
       setVacancySaving(true);
+      if (!vacancyForm.id) return;
 
-      if (vacancyForm.id) {
-        await api.put(`/vacancies/${vacancyForm.id}`, {
-          title,
-          sector: vacancyForm.sector || null,
-          description: vacancyForm.description || null,
-          requirements: vacancyForm.requirements || null,
-          status: vacancyForm.status,
-        });
+      await api.put(`/vacancies/${vacancyForm.id}`, {
+        title,
+        sector: vacancyForm.sector || null,
+        description: vacancyForm.description || null,
+        requirements: vacancyForm.requirements || null,
+        status: vacancyForm.status,
+      });
 
-        const { data } = await api.get<Vacancy>(`/vacancies/${vacancyForm.id}`);
-        setVacancy(data);
-        setActionOk("Vacante actualizada");
-      } else {
-        const { data } = await api.post(`/vacancies`, {
-          company_id: companyId,
-          title,
-          sector: vacancyForm.sector || null,
-          description: vacancyForm.description || null,
-          requirements: vacancyForm.requirements || null,
-          status: vacancyForm.status,
-        });
-
-        setActionOk("Vacante creada");
-        setVacancyDialogOpen(false);
-        if (data?.id) navigate(`/vacancies/${data.id}`);
-        else navigate(`/vacancies`);
-        return;
-      }
+      const { data } = await api.get<Vacancy>(`/vacancies/${vacancyForm.id}`);
+      setVacancy(data);
+      setActionOk("Vacante actualizada");
 
       setVacancyDialogOpen(false);
     } catch (e: any) {
@@ -306,9 +270,6 @@ export default function VacancyDetailPage() {
           {statusChip(vacancy.status)}
         </Stack>
         <Stack direction="row" spacing={1}>
-          <Button size="small" variant="outlined" onClick={openCreateVacancy}>
-            Nueva vacante
-          </Button>
           <Button size="small" variant="outlined" onClick={openEditVacancy}>
             Editar
           </Button>
