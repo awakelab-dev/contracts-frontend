@@ -1,7 +1,7 @@
 import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
-import { IconButton, Popover, TextField, type TextFieldProps } from "@mui/material";
+import { IconButton, TextField, type TextFieldProps } from "@mui/material";
 import type { SxProps, Theme } from "@mui/material/styles";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { formatDateDMY, normalizeUserDateToIso } from "../utils/date";
 
 type Props = Omit<TextFieldProps, "value" | "onChange" | "type" | "defaultValue"> & {
@@ -14,9 +14,7 @@ type Props = Omit<TextFieldProps, "value" | "onChange" | "type" | "defaultValue"
 export default function DateTextField({ value, onChange, InputProps, InputLabelProps, helperText, sx, ...rest }: Props) {
   const [text, setText] = useState(() => (value ? formatDateDMY(value, "") : ""));
   const [error, setError] = useState<string | null>(null);
-
-  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
-  const popoverOpen = useMemo(() => Boolean(anchorEl), [anchorEl]);
+  const nativeDateInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     setText(value ? formatDateDMY(value, "") : "");
@@ -56,6 +54,20 @@ export default function DateTextField({ value, onChange, InputProps, InputLabelP
     setText(iso ? formatDateDMY(iso, "") : "");
     onChange(iso);
   };
+  const openNativePicker = () => {
+    if (rest.disabled) return;
+    const el = nativeDateInputRef.current;
+    if (!el) return;
+    el.focus({ preventScroll: true });
+    const showPicker = (el as HTMLInputElement & { showPicker?: () => void }).showPicker;
+    if (typeof showPicker === "function") {
+      try {
+        showPicker.call(el);
+      } catch {
+        // no-op
+      }
+    }
+  };
 
   return (
     <>
@@ -78,7 +90,7 @@ export default function DateTextField({ value, onChange, InputProps, InputLabelP
               <IconButton
                 size={rest.size === "small" ? "small" : "medium"}
                 aria-label="Abrir calendario"
-                onClick={(e) => setAnchorEl(e.currentTarget)}
+                onClick={openNativePicker}
                 disabled={rest.disabled}
                 edge="end"
               >
@@ -88,25 +100,24 @@ export default function DateTextField({ value, onChange, InputProps, InputLabelP
           ),
         }}
       />
-
-      <Popover
-        open={popoverOpen}
-        anchorEl={anchorEl}
-        onClose={() => setAnchorEl(null)}
-        anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
-      >
-        <TextField
-          type="date"
-          size={rest.size}
-          value={value || ""}
-          onChange={(e) => {
-            onChange(e.target.value);
-            setAnchorEl(null);
-          }}
-          sx={{ m: 2, minWidth: 220, "& input": { whiteSpace: "nowrap" } }}
-          InputLabelProps={{ shrink: true }}
-        />
-      </Popover>
+      <input
+        ref={nativeDateInputRef}
+        type="date"
+        tabIndex={-1}
+        aria-hidden="true"
+        value={value || ""}
+        onChange={(e) => onChange(e.target.value)}
+        style={{
+          position: "absolute",
+          width: 1,
+          height: 1,
+          opacity: 0,
+          pointerEvents: "none",
+          border: 0,
+          padding: 0,
+          margin: 0,
+        }}
+      />
     </>
   );
 }

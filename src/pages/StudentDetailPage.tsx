@@ -107,6 +107,30 @@ const CONTRIBUTION_GROUP_OPTIONS = [
   "TRABAJADORES MENORES DE DIECIOCHO AÑOS, CUALQUIERA QUE SEA SU CATEGORÍA PROFESIONAL",
 ] as const;
 
+type InvitationFormMode = "create" | "edit";
+type ContractFormMode = "create" | "edit";
+
+const EMPTY_INVITATION_FORM = {
+  vacancy_id: "",
+  status: "sent" as InvitationRow["status"],
+  sent_at: "",
+  responded_at: "",
+};
+
+const EMPTY_CONTRACT_FORM = {
+  company_nif: "",
+  company_name: "",
+  sector: "",
+  start_date: "",
+  end_date: "",
+  workday_pct: "",
+  contribution_group: "",
+  contract_type: "",
+  weekly_hours: "",
+  contributed_days: "",
+  notes: "",
+};
+
 function fmtDate(v: unknown): string {
   if (!v) return "";
   if (v instanceof Date) return v.toISOString().slice(0, 10);
@@ -318,12 +342,8 @@ export default function StudentDetailPage() {
     status: InvitationRow["status"];
     sent_at: string;
     responded_at: string;
-  }>({
-    vacancy_id: "",
-    status: "sent",
-    sent_at: "",
-    responded_at: "",
-  });
+  }>({ ...EMPTY_INVITATION_FORM });
+  const [invitationFormMode, setInvitationFormMode] = useState<InvitationFormMode | null>(null);
   const [invitationSaving, setInvitationSaving] = useState(false);
   const [invitationNotify, setInvitationNotify] = useState({ email: false, whatsapp: false });
 
@@ -370,19 +390,8 @@ export default function StudentDetailPage() {
     weekly_hours: string;
     contributed_days: string;
     notes: string;
-  }>({
-    company_nif: "",
-    company_name: "",
-    sector: "",
-    start_date: "",
-    end_date: "",
-    workday_pct: "",
-    contribution_group: "",
-    contract_type: "",
-    weekly_hours: "",
-    contributed_days: "",
-    notes: "",
-  });
+  }>({ ...EMPTY_CONTRACT_FORM });
+  const [contractFormMode, setContractFormMode] = useState<ContractFormMode | null>(null);
   const [contractSaving, setContractSaving] = useState(false);
 
   const sid = String(id ?? "").trim();
@@ -704,27 +713,71 @@ export default function StudentDetailPage() {
     }
   }
 
+  function openInvitationsDialog() {
+    setInvitationsOpen(true);
+    setInvitationFormMode(null);
+    setInvitationForm({ ...EMPTY_INVITATION_FORM });
+    setInvitationNotify({ email: false, whatsapp: false });
+  }
+
+  function closeInvitationsDialog() {
+    setInvitationsOpen(false);
+    setInvitationFormMode(null);
+    setInvitationForm({ ...EMPTY_INVITATION_FORM });
+    setInvitationNotify({ email: false, whatsapp: false });
+  }
+
+  function startCreateInvitation() {
+    setInvitationFormMode("create");
+    setInvitationForm({
+      ...EMPTY_INVITATION_FORM,
+      status: "sent",
+      sent_at: fmtDate(new Date()),
+      responded_at: "",
+    });
+    setInvitationNotify({ email: false, whatsapp: false });
+  }
+
+  function startEditInvitation(inv: InvitationRow) {
+    setInvitationFormMode("edit");
+    setInvitationForm({
+      id: inv.id,
+      vacancy_id: String(inv.vacancy_id),
+      status: inv.status,
+      sent_at: fmtDate(inv.sent_at),
+      responded_at: inv.responded_at ? fmtDate(inv.responded_at) : "",
+    });
+    setInvitationNotify({ email: false, whatsapp: false });
+  }
+
+  function cancelInvitationForm() {
+    setInvitationFormMode(null);
+    setInvitationForm({ ...EMPTY_INVITATION_FORM });
+    setInvitationNotify({ email: false, whatsapp: false });
+  }
+
   async function saveInvitation() {
+    if (!invitationFormMode) return;
     const n = Number(sid);
     const vid = Number(invitationForm.vacancy_id);
     if (!Number.isFinite(n)) return;
 
-    const isCreating = !invitationForm.id;
+    const isCreating = invitationFormMode === "create";
+    if (isCreating && !Number.isFinite(vid)) return;
     const notify = { ...invitationNotify };
 
-    if (isCreating && !Number.isFinite(vid)) return;
-
-    const responded_at =
-      invitationForm.responded_at ||
-      (["accepted", "rejected"].includes(invitationForm.status) ? fmtDate(new Date()) : "");
+    const statusToSave: InvitationRow["status"] = isCreating ? "sent" : invitationForm.status;
+    const responded_at = isCreating
+      ? ""
+      : invitationForm.responded_at || (["accepted", "rejected"].includes(statusToSave) ? fmtDate(new Date()) : "");
 
     try {
       setActionError(null);
       setInvitationSaving(true);
 
-      if (invitationForm.id) {
+      if (invitationFormMode === "edit" && invitationForm.id) {
         await api.put(`/invitations/${invitationForm.id}`, {
-          status: invitationForm.status,
+          status: statusToSave,
           sent_at: invitationForm.sent_at || null,
           responded_at: responded_at || null,
         });
@@ -732,15 +785,14 @@ export default function StudentDetailPage() {
         await api.post(`/invitations`, {
           vacancy_id: vid,
           student_id: n,
-          status: invitationForm.status,
+          status: statusToSave,
           sent_at: invitationForm.sent_at || null,
-          responded_at: responded_at || null,
+          responded_at: null,
         });
       }
 
       await refreshInvitations();
-      setInvitationForm({ vacancy_id: "", status: "sent", sent_at: "", responded_at: "" });
-      setInvitationNotify({ email: false, whatsapp: false });
+      cancelInvitationForm();
 
       if (isCreating && (notify.email || notify.whatsapp)) {
         const channels = [notify.email ? "Email" : null, notify.whatsapp ? "WhatsApp" : null].filter(Boolean).join(" + ");
@@ -759,7 +811,7 @@ export default function StudentDetailPage() {
       await api.delete(`/invitations/${invitationId}`);
       await refreshInvitations();
       if (invitationForm.id === invitationId) {
-        setInvitationForm({ vacancy_id: "", status: "sent", sent_at: "", responded_at: "" });
+        cancelInvitationForm();
       }
     } catch (e: any) {
       setActionError(e?.response?.data?.error || e?.message || "Error al eliminar invitación");
@@ -841,7 +893,48 @@ export default function StudentDetailPage() {
     }
   }
 
+  function openContractsDialog() {
+    setContractsOpen(true);
+    setContractFormMode(null);
+    setContractForm({ ...EMPTY_CONTRACT_FORM });
+  }
+
+  function closeContractsDialog() {
+    setContractsOpen(false);
+    setContractFormMode(null);
+    setContractForm({ ...EMPTY_CONTRACT_FORM });
+  }
+
+  function startCreateContract() {
+    setContractFormMode("create");
+    setContractForm({ ...EMPTY_CONTRACT_FORM });
+  }
+
+  function startEditContract(c: HiringContractRow) {
+    setContractFormMode("edit");
+    setContractForm({
+      id: c.id,
+      company_nif: c.company_nif,
+      company_name: c.company_name,
+      sector: c.sector ?? "",
+      start_date: fmtDate(c.start_date),
+      end_date: fmtDate(c.end_date),
+      workday_pct: c.workday_pct ?? "",
+      contribution_group: c.contribution_group ?? "",
+      contract_type: c.contract_type ?? "",
+      weekly_hours: c.weekly_hours != null ? String(c.weekly_hours) : "",
+      contributed_days: c.contributed_days != null ? String(c.contributed_days) : "",
+      notes: c.notes ?? "",
+    });
+  }
+
+  function cancelContractForm() {
+    setContractFormMode(null);
+    setContractForm({ ...EMPTY_CONTRACT_FORM });
+  }
+
   async function saveContract() {
+    if (!contractFormMode) return;
     const n = Number(sid);
     if (!Number.isFinite(n) || !contractForm.company_nif.trim() || !contractForm.company_name.trim() || !contractForm.start_date) return;
 
@@ -864,26 +957,14 @@ export default function StudentDetailPage() {
         notes: contractForm.notes || null,
       };
 
-      if (contractForm.id) {
+      if (contractFormMode === "edit" && contractForm.id) {
         await api.put(`/hiring-contracts/${contractForm.id}`, payload);
       } else {
         await api.post(`/hiring-contracts`, payload);
       }
 
       await refreshContracts();
-      setContractForm({
-        company_nif: "",
-        company_name: "",
-        sector: "",
-        start_date: "",
-        end_date: "",
-        workday_pct: "",
-        contribution_group: "",
-        contract_type: "",
-        weekly_hours: "",
-        contributed_days: "",
-        notes: "",
-      });
+      cancelContractForm();
     } catch (e: any) {
       setActionError(e?.response?.data?.error || e?.message || "Error al guardar contrato");
     } finally {
@@ -897,19 +978,7 @@ export default function StudentDetailPage() {
       await api.delete(`/hiring-contracts/${contractId}`);
       await refreshContracts();
       if (contractForm.id === contractId) {
-        setContractForm({
-          company_nif: "",
-          company_name: "",
-          sector: "",
-          start_date: "",
-          end_date: "",
-          workday_pct: "",
-          contribution_group: "",
-          contract_type: "",
-          weekly_hours: "",
-          contributed_days: "",
-          notes: "",
-        });
+        cancelContractForm();
       }
     } catch (e: any) {
       setActionError(e?.response?.data?.error || e?.message || "Error al eliminar contrato");
@@ -1249,7 +1318,7 @@ export default function StudentDetailPage() {
                     <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
                       Invitaciones ({invitations.length})
                     </Typography>
-                    <Button size="small" variant="outlined" onClick={() => setInvitationsOpen(true)}>
+                    <Button size="small" variant="outlined" onClick={openInvitationsDialog}>
                       Ver
                     </Button>
                   </Stack>
@@ -1331,7 +1400,7 @@ export default function StudentDetailPage() {
                     <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
                       Contrataciones ({contracts.length})
                     </Typography>
-                    <Button size="small" variant="outlined" onClick={() => setContractsOpen(true)}>
+                    <Button size="small" variant="outlined" onClick={openContractsDialog}>
                       Ver
                     </Button>
                   </Stack>
@@ -1741,7 +1810,7 @@ export default function StudentDetailPage() {
       </Dialog>
 
       {/* Invitaciones: listado completo + CRUD */}
-      <Dialog open={invitationsOpen} onClose={() => setInvitationsOpen(false)} fullWidth maxWidth="md">
+      <Dialog open={invitationsOpen} onClose={closeInvitationsDialog} fullWidth maxWidth="md">
         <DialogTitle>Invitaciones</DialogTitle>
         <DialogContent dividers>
           <Stack spacing={2}>
@@ -1760,115 +1829,126 @@ export default function StudentDetailPage() {
             </Paper>
 
             <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
-              <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                {invitationForm.id ? "Editar invitación" : "Nueva invitación"}
-              </Typography>
-              <Grid container spacing={2}>
-                <Grid size={{ xs: 12, md: 6 }}>
-                  <TextField
-                    label="Vacante"
-                    select
-                    size="small"
-                    fullWidth
-                    disabled={!!invitationForm.id}
-                    value={invitationForm.vacancy_id}
-                    onChange={(e) => setInvitationForm((f) => ({ ...f, vacancy_id: e.target.value }))}
-                  >
-                    {vacancies
-                      .filter((v) => v.status === "open")
-                      .map((v) => (
-                        <MenuItem key={v.id} value={String(v.id)}>
-                          {v.title} — {companyName.get(v.company_id) || `ID #${v.company_id}`}
-                        </MenuItem>
-                      ))}
-                  </TextField>
-                </Grid>
-
-                <Grid size={{ xs: 12, md: 6 }}>
-                  <TextField
-                    label="Estado"
-                    select
-                    size="small"
-                    fullWidth
-                    value={invitationForm.status}
-                    onChange={(e) => setInvitationForm((f) => ({ ...f, status: e.target.value as any }))}
-                  >
-                    <MenuItem value="sent">Enviada</MenuItem>
-                    <MenuItem value="accepted">Aceptada</MenuItem>
-                    <MenuItem value="rejected">Rechazada</MenuItem>
-                    <MenuItem value="expired">Expirada</MenuItem>
-                  </TextField>
-                </Grid>
-
-                <Grid size={{ xs: 12, md: 6 }}>
-                  <DateTextField
-                    label="Fecha envío"
-                    size="small"
-                    fullWidth
-                    value={invitationForm.sent_at}
-                    onChange={(nextIso) => setInvitationForm((f) => ({ ...f, sent_at: nextIso }))}
-                    placeholder="dd/mm/aaaa"
-                  />
-                </Grid>
-
-                <Grid size={{ xs: 12, md: 6 }}>
-                  <DateTextField
-                    label="Fecha respuesta"
-                    size="small"
-                    fullWidth
-                    value={invitationForm.responded_at}
-                    onChange={(nextIso) => setInvitationForm((f) => ({ ...f, responded_at: nextIso }))}
-                    placeholder="dd/mm/aaaa"
-                  />
-                </Grid>
-
-                {!invitationForm.id && (
-                  <Grid size={{ xs: 12 }}>
-                    <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems={{ xs: "flex-start", sm: "center" }}>
-                      <FormControlLabel
-                        control={
-                          <Checkbox
-                            checked={invitationNotify.email}
-                            onChange={(e) => setInvitationNotify((n) => ({ ...n, email: e.target.checked }))}
-                          />
-                        }
-                        label="Notificar por Email"
-                      />
-                      <FormControlLabel
-                        control={
-                          <Checkbox
-                            checked={invitationNotify.whatsapp}
-                            onChange={(e) => setInvitationNotify((n) => ({ ...n, whatsapp: e.target.checked }))}
-                          />
-                        }
-                        label="Notificar por WhatsApp"
-                      />
-                    </Stack>
-                  </Grid>
-                )}
-
-                <Grid size={{ xs: 12 }}>
-                  <Stack direction="row" spacing={1} justifyContent="flex-end">
-                    <Button
-                      variant="outlined"
-                      disabled={invitationSaving}
-                      onClick={() => {
-                        setInvitationForm({ vacancy_id: "", status: "sent", sent_at: "", responded_at: "" });
-                        setInvitationNotify({ email: false, whatsapp: false });
-                      }}
-                    >
+              {!invitationFormMode ? (
+                <Stack spacing={1}>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center">
+                    <Typography variant="subtitle2">Acciones</Typography>
+                    <Button variant="outlined" onClick={startCreateInvitation}>
                       Nueva invitación
                     </Button>
-                    <Button
-                      variant="contained"
-                      disabled={invitationSaving || (!invitationForm.id && !invitationForm.vacancy_id)}
-                      onClick={saveInvitation}
-                    >
-                      Guardar
-                    </Button>
                   </Stack>
-                </Grid>
-              </Grid>
+                  <Typography variant="body2" color="text.secondary">
+                    Presiona NUEVA INVITACIÓN o edita una existente para mostrar el formulario.
+                  </Typography>
+                </Stack>
+              ) : (
+                <>
+                  <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                    {invitationFormMode === "edit" ? "Editar invitación" : "Nueva invitación"}
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid size={{ xs: 12, md: 6 }}>
+                      <TextField
+                        label="Vacante"
+                        select
+                        size="small"
+                        fullWidth
+                        disabled={invitationFormMode === "edit"}
+                        value={invitationForm.vacancy_id}
+                        onChange={(e) => setInvitationForm((f) => ({ ...f, vacancy_id: e.target.value }))}
+                      >
+                        {vacancies
+                          .filter((v) => v.status === "open")
+                          .map((v) => (
+                            <MenuItem key={v.id} value={String(v.id)}>
+                              {v.title} — {companyName.get(v.company_id) || `ID #${v.company_id}`}
+                            </MenuItem>
+                          ))}
+                      </TextField>
+                    </Grid>
+
+                    <Grid size={{ xs: 12, md: 6 }}>
+                      <TextField
+                        label="Estado"
+                        select
+                        size="small"
+                        fullWidth
+                        disabled={invitationFormMode === "create"}
+                        value={invitationForm.status}
+                        onChange={(e) => setInvitationForm((f) => ({ ...f, status: e.target.value as any }))}
+                      >
+                        <MenuItem value="sent">Enviada</MenuItem>
+                        <MenuItem value="accepted">Aceptada</MenuItem>
+                        <MenuItem value="rejected">Rechazada</MenuItem>
+                        <MenuItem value="expired">Expirada</MenuItem>
+                      </TextField>
+                    </Grid>
+
+                    <Grid size={{ xs: 12, md: 6 }}>
+                      <DateTextField
+                        label="Fecha envío"
+                        size="small"
+                        fullWidth
+                        value={invitationForm.sent_at}
+                        onChange={(nextIso) => setInvitationForm((f) => ({ ...f, sent_at: nextIso }))}
+                        placeholder="dd/mm/aaaa"
+                      />
+                    </Grid>
+
+                    <Grid size={{ xs: 12, md: 6 }}>
+                      <DateTextField
+                        label="Fecha respuesta"
+                        size="small"
+                        fullWidth
+                        disabled={invitationFormMode === "create"}
+                        value={invitationForm.responded_at}
+                        onChange={(nextIso) => setInvitationForm((f) => ({ ...f, responded_at: nextIso }))}
+                        placeholder="dd/mm/aaaa"
+                      />
+                    </Grid>
+
+                    {invitationFormMode === "create" && (
+                      <Grid size={{ xs: 12 }}>
+                        <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems={{ xs: "flex-start", sm: "center" }}>
+                          <FormControlLabel
+                            control={
+                              <Checkbox
+                                checked={invitationNotify.email}
+                                onChange={(e) => setInvitationNotify((n) => ({ ...n, email: e.target.checked }))}
+                              />
+                            }
+                            label="Notificar por Email"
+                          />
+                          <FormControlLabel
+                            control={
+                              <Checkbox
+                                checked={invitationNotify.whatsapp}
+                                onChange={(e) => setInvitationNotify((n) => ({ ...n, whatsapp: e.target.checked }))}
+                              />
+                            }
+                            label="Notificar por WhatsApp"
+                          />
+                        </Stack>
+                      </Grid>
+                    )}
+
+                    <Grid size={{ xs: 12 }}>
+                      <Stack direction="row" spacing={1} justifyContent="flex-end">
+                        <Button variant="outlined" disabled={invitationSaving} onClick={cancelInvitationForm}>
+                          Cancelar
+                        </Button>
+                        <Button
+                          variant="contained"
+                          disabled={invitationSaving || (invitationFormMode === "create" && !invitationForm.vacancy_id)}
+                          onClick={saveInvitation}
+                        >
+                          Guardar
+                        </Button>
+                      </Stack>
+                    </Grid>
+                  </Grid>
+                </>
+              )}
             </Paper>
 
             <Paper variant="outlined" sx={{ borderRadius: 2, overflow: "hidden" }}>
@@ -1893,18 +1973,7 @@ export default function StudentDetailPage() {
                       <TableCell sx={{ whiteSpace: "nowrap" }}>{formatDateDMY(inv.responded_at)}</TableCell>
                       <TableCell align="right">
                         <Stack direction="row" spacing={1} justifyContent="flex-end">
-                          <Button
-                            size="small"
-                            onClick={() =>
-                              setInvitationForm({
-                                id: inv.id,
-                                vacancy_id: String(inv.vacancy_id),
-                                status: inv.status,
-                                sent_at: fmtDate(inv.sent_at),
-                                responded_at: inv.responded_at ? fmtDate(inv.responded_at) : "",
-                              })
-                            }
-                          >
+                          <Button size="small" onClick={() => startEditInvitation(inv)}>
                             Editar
                           </Button>
                           <Button size="small" color="error" onClick={() => deleteInvitation(inv.id)}>
@@ -1927,7 +1996,7 @@ export default function StudentDetailPage() {
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setInvitationsOpen(false)}>Cerrar</Button>
+          <Button onClick={closeInvitationsDialog}>Cerrar</Button>
         </DialogActions>
       </Dialog>
 
@@ -2191,220 +2260,218 @@ export default function StudentDetailPage() {
       </Dialog>
 
       {/* Contrataciones: listado completo + CRUD */}
-      <Dialog open={contractsOpen} onClose={() => setContractsOpen(false)} fullWidth maxWidth="lg">
+      <Dialog open={contractsOpen} onClose={closeContractsDialog} fullWidth maxWidth="lg">
         <DialogTitle>Contrataciones ({contracts.length})</DialogTitle>
         <DialogContent dividers>
           <Stack spacing={2}>
             <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
-              <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                {contractForm.id ? "Editar cotización" : "Nueva cotización"}
-              </Typography>
-              <Grid container spacing={2}>
-                <Grid size={{ xs: 12, md: 6 }}>
-                  <TextField
-                    label="Empresa"
-                    size="small"
-                    fullWidth
-                    value={contractForm.company_name}
-                    onChange={(e) => setContractForm((f) => ({ ...f, company_name: e.target.value }))}
-                    InputLabelProps={{ shrink: true }}
-                  />
-                </Grid>
-                <Grid size={{ xs: 12, md: 6 }}>
-                  <TextField
-                    label="NIF empresa"
-                    size="small"
-                    fullWidth
-                    value={contractForm.company_nif}
-                    onChange={(e) => setContractForm((f) => ({ ...f, company_nif: e.target.value }))}
-                    InputLabelProps={{ shrink: true }}
-                  />
-                </Grid>
-
-                <Grid size={{ xs: 12, md: 4 }}>
-                  <TextField
-                    label="Sector"
-                    size="small"
-                    fullWidth
-                    value={contractForm.sector}
-                    onChange={(e) => setContractForm((f) => ({ ...f, sector: e.target.value }))}
-                    InputLabelProps={{ shrink: true }}
-                  />
-                </Grid>
-
-                <Grid size={{ xs: 12, md: 4 }}>
-                  <TextField
-                    select
-                    label="Tipo de contrato"
-                    size="small"
-                    fullWidth
-                    value={contractForm.contract_type}
-                    onChange={(e) => setContractForm((f) => ({ ...f, contract_type: e.target.value }))}
-                    InputLabelProps={{ shrink: true }}
-                  >
-                    <MenuItem value="">
-                      <em>—</em>
-                    </MenuItem>
-                    {contractForm.contract_type && !CONTRACT_TYPE_OPTIONS.includes(contractForm.contract_type as any) && (
-                      <MenuItem value={contractForm.contract_type}>{contractForm.contract_type} (actual)</MenuItem>
-                    )}
-                    {CONTRACT_TYPE_OPTIONS.map((opt) => (
-                      <MenuItem key={opt} value={opt}>
-                        {opt}
-                      </MenuItem>
-                    ))}
-                  </TextField>
-                </Grid>
-
-                <Grid size={{ xs: 12, md: 4 }}>
-                  <TextField
-                    select
-                    label="Jornada"
-                    size="small"
-                    fullWidth
-                    value={contractForm.workday_pct}
-                    onChange={(e) => setContractForm((f) => ({ ...f, workday_pct: e.target.value }))}
-                    InputLabelProps={{ shrink: true }}
-                  >
-                    <MenuItem value="">
-                      <em>—</em>
-                    </MenuItem>
-                    {contractForm.workday_pct && !WORKDAY_OPTIONS.includes(contractForm.workday_pct as any) && (
-                      <MenuItem value={contractForm.workday_pct}>{contractForm.workday_pct} (actual)</MenuItem>
-                    )}
-                    {WORKDAY_OPTIONS.map((opt) => (
-                      <MenuItem key={opt} value={opt}>
-                        {opt}
-                      </MenuItem>
-                    ))}
-                  </TextField>
-                </Grid>
-
-                <Grid size={{ xs: 12 }}>
-                  <TextField
-                    select
-                    label="Grupo Cotización"
-                    size="small"
-                    fullWidth
-                    value={contractForm.contribution_group}
-                    onChange={(e) => setContractForm((f) => ({ ...f, contribution_group: e.target.value }))}
-                    InputLabelProps={{ shrink: true }}
-                  >
-                    <MenuItem value="">
-                      <em>—</em>
-                    </MenuItem>
-                    {contractForm.contribution_group &&
-                      !CONTRIBUTION_GROUP_OPTIONS.includes(contractForm.contribution_group as any) && (
-                        <MenuItem value={contractForm.contribution_group}>{contractForm.contribution_group} (actual)</MenuItem>
-                      )}
-                    {CONTRIBUTION_GROUP_OPTIONS.map((opt) => (
-                      <MenuItem key={opt} value={opt}>
-                        {opt}
-                      </MenuItem>
-                    ))}
-                  </TextField>
-                </Grid>
-
-                <Grid size={{ xs: 12, md: 4 }}>
-                  <DateTextField
-                    label="Fecha de alta"
-                    size="small"
-                    fullWidth
-                    value={contractForm.start_date}
-                    onChange={(nextIso) => setContractForm((f) => ({ ...f, start_date: nextIso }))}
-                    placeholder="dd/mm/aaaa"
-                  />
-                </Grid>
-
-                <Grid size={{ xs: 12, md: 4 }}>
-                  <DateTextField
-                    label="Fecha de baja"
-                    size="small"
-                    fullWidth
-                    value={contractForm.end_date}
-                    onChange={(nextIso) => setContractForm((f) => ({ ...f, end_date: nextIso }))}
-                    placeholder="dd/mm/aaaa"
-                  />
-                </Grid>
-
-                <Grid size={{ xs: 12, md: 2 }}>
-                  <TextField
-                    label="Horas/sem"
-                    type="number"
-                    size="small"
-                    fullWidth
-                    value={contractForm.weekly_hours}
-                    onChange={(e) => setContractForm((f) => ({ ...f, weekly_hours: e.target.value }))}
-                    InputLabelProps={{ shrink: true }}
-                  />
-                </Grid>
-
-                <Grid size={{ xs: 12, md: 2 }}>
-                  <TextField
-                    label="Días cotizados"
-                    type="number"
-                    size="small"
-                    fullWidth
-                    value={contractForm.contributed_days}
-                    onChange={(e) => setContractForm((f) => ({ ...f, contributed_days: e.target.value }))}
-                    InputLabelProps={{ shrink: true }}
-                  />
-                </Grid>
-
-                <Grid size={{ xs: 12 }}>
-                  <TextField
-                    label="Notas"
-                    size="small"
-                    fullWidth
-                    multiline
-                    minRows={2}
-                    value={contractForm.notes}
-                    onChange={(e) => setContractForm((f) => ({ ...f, notes: e.target.value }))}
-                    InputLabelProps={{ shrink: true }}
-                  />
-                </Grid>
-
-                <Grid size={{ xs: 12 }}>
-                  <Stack direction="row" spacing={1} justifyContent="flex-end">
-                    <Button
-                      variant="outlined"
-                      disabled={contractSaving}
-                      onClick={() =>
-                        setContractForm({
-                          company_nif: "",
-                          company_name: "",
-                          sector: "",
-                          start_date: "",
-                          end_date: "",
-                          workday_pct: "",
-                          contribution_group: "",
-                          contract_type: "",
-                          weekly_hours: "",
-                          contributed_days: "",
-                          notes: "",
-                        })
-                      }
-                    >
-                      Nueva cotización
-                    </Button>
-                    <Button variant="outlined" startIcon={<UploadFileIcon />} disabled={contractSaving}>
-                      Nueva desde PDF
-                    </Button>
-                    <Button
-                      variant="contained"
-                      disabled={
-                        contractSaving ||
-                        !contractForm.company_nif.trim() ||
-                        !contractForm.company_name.trim() ||
-                        !contractForm.start_date
-                      }
-                      onClick={saveContract}
-                    >
-                      Guardar
+              {!contractFormMode ? (
+                <Stack spacing={1}>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center">
+                    <Typography variant="subtitle2">Acciones</Typography>
+                    <Button variant="outlined" onClick={startCreateContract}>
+                      Nueva contratación
                     </Button>
                   </Stack>
-                </Grid>
-              </Grid>
+                  <Typography variant="body2" color="text.secondary">
+                    Presiona NUEVA CONTRATACIÓN o edita una existente para mostrar el formulario.
+                  </Typography>
+                </Stack>
+              ) : (
+                <>
+                  <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                    {contractFormMode === "edit" ? "Editar contratación" : "Nueva contratación"}
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid size={{ xs: 12, md: 6 }}>
+                      <TextField
+                        label="Empresa"
+                        size="small"
+                        fullWidth
+                        value={contractForm.company_name}
+                        onChange={(e) => setContractForm((f) => ({ ...f, company_name: e.target.value }))}
+                        InputLabelProps={{ shrink: true }}
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 12, md: 6 }}>
+                      <TextField
+                        label="NIF empresa"
+                        size="small"
+                        fullWidth
+                        value={contractForm.company_nif}
+                        onChange={(e) => setContractForm((f) => ({ ...f, company_nif: e.target.value }))}
+                        InputLabelProps={{ shrink: true }}
+                      />
+                    </Grid>
+
+                    <Grid size={{ xs: 12, md: 4 }}>
+                      <TextField
+                        label="Sector"
+                        size="small"
+                        fullWidth
+                        value={contractForm.sector}
+                        onChange={(e) => setContractForm((f) => ({ ...f, sector: e.target.value }))}
+                        InputLabelProps={{ shrink: true }}
+                      />
+                    </Grid>
+
+                    <Grid size={{ xs: 12, md: 4 }}>
+                      <TextField
+                        select
+                        label="Tipo de contrato"
+                        size="small"
+                        fullWidth
+                        value={contractForm.contract_type}
+                        onChange={(e) => setContractForm((f) => ({ ...f, contract_type: e.target.value }))}
+                        InputLabelProps={{ shrink: true }}
+                      >
+                        <MenuItem value="">
+                          <em>—</em>
+                        </MenuItem>
+                        {contractForm.contract_type && !CONTRACT_TYPE_OPTIONS.includes(contractForm.contract_type as any) && (
+                          <MenuItem value={contractForm.contract_type}>{contractForm.contract_type} (actual)</MenuItem>
+                        )}
+                        {CONTRACT_TYPE_OPTIONS.map((opt) => (
+                          <MenuItem key={opt} value={opt}>
+                            {opt}
+                          </MenuItem>
+                        ))}
+                      </TextField>
+                    </Grid>
+
+                    <Grid size={{ xs: 12, md: 4 }}>
+                      <TextField
+                        select
+                        label="Jornada"
+                        size="small"
+                        fullWidth
+                        value={contractForm.workday_pct}
+                        onChange={(e) => setContractForm((f) => ({ ...f, workday_pct: e.target.value }))}
+                        InputLabelProps={{ shrink: true }}
+                      >
+                        <MenuItem value="">
+                          <em>—</em>
+                        </MenuItem>
+                        {contractForm.workday_pct && !WORKDAY_OPTIONS.includes(contractForm.workday_pct as any) && (
+                          <MenuItem value={contractForm.workday_pct}>{contractForm.workday_pct} (actual)</MenuItem>
+                        )}
+                        {WORKDAY_OPTIONS.map((opt) => (
+                          <MenuItem key={opt} value={opt}>
+                            {opt}
+                          </MenuItem>
+                        ))}
+                      </TextField>
+                    </Grid>
+
+                    <Grid size={{ xs: 12 }}>
+                      <TextField
+                        select
+                        label="Grupo Cotización"
+                        size="small"
+                        fullWidth
+                        value={contractForm.contribution_group}
+                        onChange={(e) => setContractForm((f) => ({ ...f, contribution_group: e.target.value }))}
+                        InputLabelProps={{ shrink: true }}
+                      >
+                        <MenuItem value="">
+                          <em>—</em>
+                        </MenuItem>
+                        {contractForm.contribution_group &&
+                          !CONTRIBUTION_GROUP_OPTIONS.includes(contractForm.contribution_group as any) && (
+                            <MenuItem value={contractForm.contribution_group}>{contractForm.contribution_group} (actual)</MenuItem>
+                          )}
+                        {CONTRIBUTION_GROUP_OPTIONS.map((opt) => (
+                          <MenuItem key={opt} value={opt}>
+                            {opt}
+                          </MenuItem>
+                        ))}
+                      </TextField>
+                    </Grid>
+
+                    <Grid size={{ xs: 12, md: 4 }}>
+                      <DateTextField
+                        label="Fecha de alta"
+                        size="small"
+                        fullWidth
+                        value={contractForm.start_date}
+                        onChange={(nextIso) => setContractForm((f) => ({ ...f, start_date: nextIso }))}
+                        placeholder="dd/mm/aaaa"
+                      />
+                    </Grid>
+
+                    <Grid size={{ xs: 12, md: 4 }}>
+                      <DateTextField
+                        label="Fecha de baja"
+                        size="small"
+                        fullWidth
+                        value={contractForm.end_date}
+                        onChange={(nextIso) => setContractForm((f) => ({ ...f, end_date: nextIso }))}
+                        placeholder="dd/mm/aaaa"
+                      />
+                    </Grid>
+
+                    <Grid size={{ xs: 12, md: 2 }}>
+                      <TextField
+                        label="Horas/sem"
+                        type="number"
+                        size="small"
+                        fullWidth
+                        value={contractForm.weekly_hours}
+                        onChange={(e) => setContractForm((f) => ({ ...f, weekly_hours: e.target.value }))}
+                        InputLabelProps={{ shrink: true }}
+                      />
+                    </Grid>
+
+                    <Grid size={{ xs: 12, md: 2 }}>
+                      <TextField
+                        label="Días cotizados"
+                        type="number"
+                        size="small"
+                        fullWidth
+                        value={contractForm.contributed_days}
+                        onChange={(e) => setContractForm((f) => ({ ...f, contributed_days: e.target.value }))}
+                        InputLabelProps={{ shrink: true }}
+                      />
+                    </Grid>
+
+                    <Grid size={{ xs: 12 }}>
+                      <TextField
+                        label="Notas"
+                        size="small"
+                        fullWidth
+                        multiline
+                        minRows={2}
+                        value={contractForm.notes}
+                        onChange={(e) => setContractForm((f) => ({ ...f, notes: e.target.value }))}
+                        InputLabelProps={{ shrink: true }}
+                      />
+                    </Grid>
+
+                    <Grid size={{ xs: 12 }}>
+                      <Stack direction="row" spacing={1} justifyContent="flex-end">
+                        <Button variant="outlined" disabled={contractSaving} onClick={cancelContractForm}>
+                          Cancelar
+                        </Button>
+                        <Button variant="outlined" startIcon={<UploadFileIcon />} disabled={contractSaving}>
+                          Nueva desde PDF
+                        </Button>
+                        <Button
+                          variant="contained"
+                          disabled={
+                            contractSaving ||
+                            !contractForm.company_nif.trim() ||
+                            !contractForm.company_name.trim() ||
+                            !contractForm.start_date
+                          }
+                          onClick={saveContract}
+                        >
+                          Guardar
+                        </Button>
+                      </Stack>
+                    </Grid>
+                  </Grid>
+                </>
+              )}
             </Paper>
 
             <Paper variant="outlined" sx={{ borderRadius: 2 }}>
@@ -2451,25 +2518,7 @@ export default function StudentDetailPage() {
                         </TableCell>
                         <TableCell align="right">
                           <Stack direction="row" spacing={1} justifyContent="flex-end">
-                            <Button
-                              size="small"
-                              onClick={() =>
-                                setContractForm({
-                                  id: c.id,
-                                  company_nif: c.company_nif,
-                                  company_name: c.company_name,
-                                  sector: c.sector ?? "",
-                                  start_date: fmtDate(c.start_date),
-                                  end_date: fmtDate(c.end_date),
-                                  workday_pct: c.workday_pct ?? "",
-                                  contribution_group: c.contribution_group ?? "",
-                                  contract_type: c.contract_type ?? "",
-                                  weekly_hours: c.weekly_hours != null ? String(c.weekly_hours) : "",
-                                  contributed_days: c.contributed_days != null ? String(c.contributed_days) : "",
-                                  notes: c.notes ?? "",
-                                })
-                              }
-                            >
+                            <Button size="small" onClick={() => startEditContract(c)}>
                               Editar
                             </Button>
                             <Button size="small" color="error" onClick={() => deleteContract(c.id)}>
@@ -2493,7 +2542,7 @@ export default function StudentDetailPage() {
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setContractsOpen(false)}>Cerrar</Button>
+          <Button onClick={closeContractsDialog}>Cerrar</Button>
         </DialogActions>
       </Dialog>
     </Box>

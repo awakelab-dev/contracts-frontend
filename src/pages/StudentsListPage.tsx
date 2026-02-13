@@ -1,7 +1,13 @@
 import React from "react";
 import {
+  Alert,
   Box,
   Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  MenuItem,
   Paper,
   Stack,
   Table,
@@ -20,6 +26,7 @@ import DownloadIcon from "@mui/icons-material/Download";
 import { exportToCsv } from "../utils/CsvExporter";
 import type { CsvColumn } from "../utils/CsvExporter";
 import { formatDateDMY } from "../utils/date";
+import DateTextField from "../components/DateTextField";
 
 type StudentLite = {
   id: string;
@@ -34,6 +41,30 @@ type StudentLite = {
   email: string;
 };
 
+type NewStudentForm = {
+  first_names: string;
+  last_names: string;
+  dni_nie: string;
+  social_security_number: string;
+  birth_date: string;
+  district: string;
+  phone: string;
+  email: string;
+  employment_status: "unemployed" | "employed" | "improved" | "unknown";
+};
+
+const EMPTY_NEW_STUDENT_FORM: NewStudentForm = {
+  first_names: "",
+  last_names: "",
+  dni_nie: "",
+  social_security_number: "",
+  birth_date: "",
+  district: "",
+  phone: "",
+  email: "",
+  employment_status: "unknown",
+};
+
 export default function StudentsListPage() {
   const navigate = useNavigate();
 
@@ -44,6 +75,10 @@ export default function StudentsListPage() {
 
   const [page, setPage] = React.useState(0);
   const [rowsPerPage, setRowsPerPage] = React.useState(10);
+  const [createOpen, setCreateOpen] = React.useState(false);
+  const [createSaving, setCreateSaving] = React.useState(false);
+  const [createError, setCreateError] = React.useState<string | null>(null);
+  const [newStudent, setNewStudent] = React.useState<NewStudentForm>(EMPTY_NEW_STUDENT_FORM);
 
   React.useEffect(() => {
     let cancel = false;
@@ -68,6 +103,56 @@ export default function StudentsListPage() {
       cancel = true;
     };
   }, []);
+
+  const openCreateStudent = () => {
+    setCreateError(null);
+    setNewStudent(EMPTY_NEW_STUDENT_FORM);
+    setCreateOpen(true);
+  };
+
+  const closeCreateStudent = () => {
+    if (createSaving) return;
+    setCreateOpen(false);
+    setCreateError(null);
+    setNewStudent(EMPTY_NEW_STUDENT_FORM);
+  };
+
+  const saveNewStudent = async () => {
+    if (!newStudent.first_names.trim() || !newStudent.last_names.trim() || !newStudent.dni_nie.trim()) {
+      setCreateError("Nombres, apellidos y DNI/NIE son obligatorios.");
+      return;
+    }
+
+    try {
+      setCreateError(null);
+      setCreateSaving(true);
+      const { data } = await api.post<{ studentId?: number }>("/students", {
+        first_names: newStudent.first_names.trim(),
+        last_names: newStudent.last_names.trim(),
+        dni_nie: newStudent.dni_nie.trim(),
+        social_security_number: newStudent.social_security_number.trim() || null,
+        birth_date: newStudent.birth_date || null,
+        district: newStudent.district.trim() || null,
+        phone: newStudent.phone.trim() || null,
+        email: newStudent.email.trim() || null,
+        employment_status: newStudent.employment_status,
+      });
+
+      const createdId = Number(data?.studentId);
+      setCreateOpen(false);
+      if (Number.isFinite(createdId) && createdId > 0) {
+        navigate(`/students/${createdId}`, { state: { from: "/students" } });
+        return;
+      }
+
+      window.location.reload();
+    } catch (err: any) {
+      const msg = err?.response?.data?.error || err?.response?.data?.message || err?.message || "Error al crear alumno";
+      setCreateError(msg);
+    } finally {
+      setCreateSaving(false);
+    }
+  };
 
   const rows = React.useMemo(() => {
     const hay = (v?: string) => (v || "").toLowerCase().includes(q.toLowerCase());
@@ -141,6 +226,9 @@ export default function StudentsListPage() {
           />
           <Button variant="outlined" size="small" startIcon={<DownloadIcon />} onClick={onExport}>
             Exportar CSV
+          </Button>
+          <Button variant="contained" size="small" onClick={openCreateStudent}>
+            Nuevo alumno
           </Button>
         </Stack>
         <Table size="small">
@@ -219,6 +307,118 @@ export default function StudentsListPage() {
           labelRowsPerPage="Filas por página"
         />
       </Paper>
+
+      <Dialog open={createOpen} onClose={closeCreateStudent} fullWidth maxWidth="md">
+        <DialogTitle>Nuevo alumno</DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={2} sx={{ mt: 0.5 }}>
+            {createError && <Alert severity="error">{createError}</Alert>}
+            <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
+              <TextField
+                label="Nombres"
+                size="small"
+                fullWidth
+                required
+                value={newStudent.first_names}
+                onChange={(e) => setNewStudent((s) => ({ ...s, first_names: e.target.value }))}
+              />
+              <TextField
+                label="Apellidos"
+                size="small"
+                fullWidth
+                required
+                value={newStudent.last_names}
+                onChange={(e) => setNewStudent((s) => ({ ...s, last_names: e.target.value }))}
+              />
+            </Stack>
+
+            <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
+              <TextField
+                label="DNI / NIE"
+                size="small"
+                fullWidth
+                required
+                value={newStudent.dni_nie}
+                onChange={(e) => setNewStudent((s) => ({ ...s, dni_nie: e.target.value }))}
+              />
+              <TextField
+                label="Nº Seguridad Social"
+                size="small"
+                fullWidth
+                value={newStudent.social_security_number}
+                onChange={(e) => setNewStudent((s) => ({ ...s, social_security_number: e.target.value }))}
+              />
+            </Stack>
+
+            <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
+              <DateTextField
+                label="Fecha nacimiento"
+                size="small"
+                fullWidth
+                value={newStudent.birth_date}
+                onChange={(nextIso) => setNewStudent((s) => ({ ...s, birth_date: nextIso }))}
+                placeholder="dd/mm/aaaa"
+              />
+              <TextField
+                label="Distrito"
+                size="small"
+                fullWidth
+                value={newStudent.district}
+                onChange={(e) => setNewStudent((s) => ({ ...s, district: e.target.value }))}
+              />
+            </Stack>
+
+            <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
+              <TextField
+                label="Teléfono"
+                size="small"
+                fullWidth
+                value={newStudent.phone}
+                onChange={(e) => setNewStudent((s) => ({ ...s, phone: e.target.value }))}
+              />
+              <TextField
+                label="Email"
+                size="small"
+                type="email"
+                fullWidth
+                value={newStudent.email}
+                onChange={(e) => setNewStudent((s) => ({ ...s, email: e.target.value }))}
+              />
+            </Stack>
+
+            <TextField
+              label="Situación laboral"
+              select
+              size="small"
+              fullWidth
+              value={newStudent.employment_status}
+              onChange={(e) =>
+                setNewStudent((s) => ({
+                  ...s,
+                  employment_status: e.target.value as NewStudentForm["employment_status"],
+                }))
+              }
+            >
+              <MenuItem value="unknown">Desconocido</MenuItem>
+              <MenuItem value="unemployed">Desempleado</MenuItem>
+              <MenuItem value="employed">Empleado</MenuItem>
+              <MenuItem value="improved">Buscando mejor opción</MenuItem>
+            </TextField>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeCreateStudent} disabled={createSaving}>
+            Cancelar
+          </Button>
+          <Button
+            variant="contained"
+            onClick={saveNewStudent}
+            disabled={createSaving || !newStudent.first_names.trim() || !newStudent.last_names.trim() || !newStudent.dni_nie.trim()}
+          >
+            Crear alumno
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
