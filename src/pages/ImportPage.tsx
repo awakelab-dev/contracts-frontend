@@ -23,14 +23,19 @@ import api from "../lib/api";
 // Esquemas por tipo de importación
 const SCHEMES = {
   students: [
+    "expediente",
     "first_names",
     "last_names",
     "dni_nie",
-    "social_security_number",
     "birth_date",
+    "age",
+    "sex",
+    "social_security_number",
     "district",
+    "municipality",
     "phone",
     "email",
+    "notes",
     "employment_status",
   ],
   companies: ["nif", "name", "company_email", "company_phone", "sector", "contact_name", "contact_email"],
@@ -79,14 +84,19 @@ export default function ImportPage() {
     const find = (...keys: string[]) => hdrs.find((h) => keys.some((k) => lower(h).includes(k))) || "";
     if (type === 'students') {
       return {
+        expediente: find('expediente','expte'),
         first_names: find('nombres','nombre','first'),
         last_names: find('apellidos','apellido','last','surname'),
         dni_nie: find('dni','nie','documento'),
-        social_security_number: find('nss','seguridad','social','ss'),
         birth_date: find('nacimiento','birth','fecha nac','dob'),
+        age: find('edad','age'),
+        sex: find('sexo','sex','género','genero'),
+        social_security_number: find('nss','seguridad','social','ss'),
         district: find('distrito','district'),
+        municipality: find('municipio','comunidad de madrid','city'),
         phone: find('tlf','tel','phone','telefono','teléfono','movil','móvil'),
         email: find('email','correo','mail'),
+        notes: find('observaciones','obs','notas','notes'),
         employment_status: find('status','empleo','situacion','situación'),
       };
     } else if (type === 'companies') {
@@ -177,17 +187,29 @@ const handleDelimiterChange = (val: string) => {
         const v = (s || "").toLowerCase();
         return ["unemployed", "employed", "improved", "unknown"].includes(v) ? v : "unknown";
       };
+      const toValidSex = (s: string) => {
+        const v = (s || "").toLowerCase();
+        if (["mujer", "female", "f"].includes(v)) return "mujer";
+        if (["hombre", "male", "m"].includes(v)) return "hombre";
+        if (["other", "otro", "otra"].includes(v)) return "other";
+        return "unknown";
+      };
       const payloadRows = rows.map((r) => ({
+        expediente: sanitize((r[mapping['expediente']] || "").toString()),
         first_names: sanitize((r[mapping['first_names']] || "").toString()),
         last_names: sanitize((r[mapping['last_names']] || "").toString()),
         dni_nie: sanitize((r[mapping['dni_nie']] || "").toString()),
-        social_security_number: sanitize((r[mapping['social_security_number']] || "").toString()),
         birth_date: sanitize((r[mapping['birth_date']] || "").toString()),
+        age: sanitize((r[mapping['age']] || "").toString()),
+        sex: toValidSex(sanitize((r[mapping['sex']] || "").toString())),
+        social_security_number: sanitize((r[mapping['social_security_number']] || "").toString()),
         district: sanitize((r[mapping['district']] || "").toString()),
+        municipality: sanitize((r[mapping['municipality']] || "").toString()),
         phone: sanitize((r[mapping['phone']] || "").toString()),
-        email: sanitize((r[mapping['email']] || "").toString()),
+        email: sanitize((r[mapping['email']] || "").toString()).toLowerCase(),
+        notes: sanitize((r[mapping['notes']] || "").toString()),
         employment_status: toValidStatus(sanitize((r[mapping['employment_status']] || "").toString())),
-      })).filter((x) => x.first_names && x.last_names && x.dni_nie);
+      })).filter((x) => x.expediente && x.first_names && x.last_names && x.dni_nie);
       return { rows: payloadRows };
     }
     if (importType === 'companies') {

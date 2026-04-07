@@ -15,6 +15,11 @@ import {
 } from "@mui/material";
 import { useAuth } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
+import {
+  API_BASE_URL_STORAGE_KEY,
+  getApiBaseUrlFromEnvOrDefault,
+  normalizeBaseUrl,
+} from "../lib/apiBaseUrl";
 
 type Settings = {
   apiBaseUrl: string;
@@ -25,7 +30,7 @@ type Settings = {
 };
 
 const LS_KEYS = {
-  apiBaseUrl: "app.apiBaseUrl",
+  apiBaseUrl: API_BASE_URL_STORAGE_KEY,
   theme: "app.theme",
   importDelimiter: "import.defaultDelimiter",
   importRememberMapping: "import.rememberMapping",
@@ -33,7 +38,7 @@ const LS_KEYS = {
 } as const;
 
 const DEFAULTS: Settings = {
-  apiBaseUrl: (import.meta as any).env?.VITE_API_URL || "http://localhost:4000",
+  apiBaseUrl: getApiBaseUrlFromEnvOrDefault(),
   theme: "light",
   importDelimiter: ",",
   importRememberMapping: true,
@@ -49,7 +54,7 @@ function loadSettings(): Settings {
     const importRememberMapping = localStorage.getItem(LS_KEYS.importRememberMapping);
     const emailFrom = localStorage.getItem(LS_KEYS.emailFrom);
 
-    if (apiBaseUrl) s.apiBaseUrl = apiBaseUrl;
+    if (apiBaseUrl) s.apiBaseUrl = normalizeBaseUrl(apiBaseUrl) || getApiBaseUrlFromEnvOrDefault();
     if (theme === "light" || theme === "dark") s.theme = theme;
     if (importDelimiter === "," || importDelimiter === ";" || importDelimiter === "\t") s.importDelimiter = importDelimiter;
     if (importRememberMapping !== null) s.importRememberMapping = importRememberMapping === "true";
@@ -62,7 +67,7 @@ function loadSettings(): Settings {
 
 function saveSettings(s: Settings) {
   try {
-    localStorage.setItem(LS_KEYS.apiBaseUrl, s.apiBaseUrl);
+    localStorage.setItem(LS_KEYS.apiBaseUrl, normalizeBaseUrl(s.apiBaseUrl) || getApiBaseUrlFromEnvOrDefault());
     localStorage.setItem(LS_KEYS.theme, s.theme);
     localStorage.setItem(LS_KEYS.importDelimiter, s.importDelimiter);
     localStorage.setItem(LS_KEYS.importRememberMapping, String(s.importRememberMapping));
@@ -83,7 +88,10 @@ export default function SettingsPage() {
   }, []);
 
   const onSave = () => {
-    saveSettings(settings);
+    const normalizedApiBaseUrl = normalizeBaseUrl(settings.apiBaseUrl) || getApiBaseUrlFromEnvOrDefault();
+    const next = { ...settings, apiBaseUrl: normalizedApiBaseUrl };
+    setSettings(next);
+    saveSettings(next);
     setSaved(true);
   };
 

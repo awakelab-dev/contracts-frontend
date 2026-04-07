@@ -19,6 +19,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import StudentPracticesPage from "./pages/StudentPracticesPage";
 import StudentInsertionsPage from "./pages/StudentInsertionsPage";
 import StudentDetailPage from "./pages/StudentDetailPage";
+import StudentEditPage from "./pages/StudentEditPage";
 
 export default function App() {
   return (
@@ -34,6 +35,8 @@ export default function App() {
         >
           <Route path="students/:id/practicas" element={<StudentPracticesPage />} />
           <Route path="students/:id/inserciones" element={<StudentInsertionsPage />} />
+          <Route path="students/new" element={<StudentEditPage />} />
+          <Route path="students/:id/edit" element={<StudentEditPage />} />
           <Route index element={<DashboardPage />} />
           <Route path="students" element={<StudentsListPage />} />
           <Route path="students/:id" element={<StudentDetailPage />} />

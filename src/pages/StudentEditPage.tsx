@@ -1,105 +1,368 @@
-import { useParams, Link as RouterLink } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { useParams, Link as RouterLink, useNavigate } from "react-router-dom";
 import {
+  Alert,
   Box,
   Button,
   Grid,
+  MenuItem,
   Paper,
   Stack,
   TextField,
   Typography,
 } from "@mui/material";
-import { formatDateDMY } from "../utils/date";
+import api from "../lib/api";
+import type { Student } from "../types";
+import DateTextField from "../components/DateTextField";
 
-// Datos mock locales (sin BD)
-const STUDENTS = {
-  "1": {
-    expediente: "EXP-2025-001",
-    cursoFormacion: "AYUDANTE CAMARERO/A",
-    tecnicoLaboral: "Luis Gómez",
-    nombre: "ANTHONY JOSUE",
-    apellidos: "BRUFAU MODESTO",
-    dniNie: "Y3451629X",
-    nss: "12 34567890 01",
-    fechaNacimiento: "1996-03-12",
-    edad: 29,
-    distrito: "Centro",
-    telefono: "600123456",
-    email: "anthony.brufau@example.com",
-  },
-  "2": {
-    expediente: "EXP-2025-002",
-    cursoFormacion: "AYUDANTE CAMARERO/A",
-    tecnicoLaboral: "Ana Ruiz",
-    nombre: "DELIA",
-    apellidos: "FERNANDINO LÓPEZ",
-    dniNie: "06655123G",
-    nss: "11 22334455 02",
-    fechaNacimiento: "1993-11-02",
-    edad: 32,
-    distrito: "Tetuán",
-    telefono: "600234567",
-    email: "delia.fernandino@example.com",
-  },
-} as const;
+type StudentForm = {
+  expediente: string;
+  first_names: string;
+  last_names: string;
+  dni_nie: string;
+  social_security_number: string;
+  birth_date: string;
+  age: string;
+  sex: "mujer" | "hombre" | "other" | "unknown";
+  district: string;
+  municipality: string;
+  phone: string;
+  email: string;
+  employment_status: "unemployed" | "employed" | "improved" | "unknown";
+  notes: string;
+};
+
+const EMPTY_FORM: StudentForm = {
+  expediente: "",
+  first_names: "",
+  last_names: "",
+  dni_nie: "",
+  social_security_number: "",
+  birth_date: "",
+  age: "",
+  sex: "unknown",
+  district: "",
+  municipality: "",
+  phone: "",
+  email: "",
+  employment_status: "unknown",
+  notes: "",
+};
+
+function toForm(student: Student): StudentForm {
+  return {
+    expediente: student.expediente || "",
+    first_names: student.first_names || "",
+    last_names: student.last_names || "",
+    dni_nie: student.dni_nie || "",
+    social_security_number: student.social_security_number || "",
+    birth_date: student.birth_date ? String(student.birth_date).slice(0, 10) : "",
+    age: student.age != null ? String(student.age) : "",
+    sex: (student.sex || "unknown") as StudentForm["sex"],
+    district: student.district || "",
+    municipality: student.municipality || "",
+    phone: student.phone || "",
+    email: student.email || "",
+    employment_status: (student.employment_status || "unknown") as StudentForm["employment_status"],
+    notes: student.notes || "",
+  };
+}
 
 export default function StudentEditPage() {
   const { id } = useParams();
-  const key = id === "1" || id === "2" ? id : "1";
-  const data = STUDENTS[key]; // valores por defecto
+  const navigate = useNavigate();
+
+  const isCreateMode = !id || id === "new";
+  const [form, setForm] = useState<StudentForm>(EMPTY_FORM);
+  const [loading, setLoading] = useState(!isCreateMode);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isCreateMode) {
+      setForm(EMPTY_FORM);
+      setLoading(false);
+      return;
+    }
+
+    let cancel = false;
+    setLoading(true);
+    setError(null);
+
+    api
+      .get<Student>(`/students/${id}`)
+      .then(({ data }) => {
+        if (cancel) return;
+        setForm(toForm(data));
+      })
+      .catch((err) => {
+        if (cancel) return;
+        const msg = err?.response?.data?.error || err?.response?.data?.message || err?.message || "Error al cargar alumno";
+        setError(msg);
+      })
+      .finally(() => {
+        if (cancel) return;
+        setLoading(false);
+      });
+
+    return () => {
+      cancel = true;
+    };
+  }, [id, isCreateMode]);
+
+  const canSave = useMemo(
+    () =>
+      !!form.expediente.trim() &&
+      !!form.first_names.trim() &&
+      !!form.last_names.trim() &&
+      !!form.dni_nie.trim(),
+    [form]
+  );
+
+  const save = async () => {
+    if (!canSave) return;
+    const ageValue = form.age.trim();
+    const parsedAge = ageValue ? Number.parseInt(ageValue, 10) : null;
+    if (ageValue) {
+      if (parsedAge === null || Number.isNaN(parsedAge) || parsedAge <= 0) {
+        setError("La edad debe ser un número válido.");
+        return;
+      }
+    }
+
+    try {
+      setError(null);
+      setSaving(true);
+
+      const payload = {
+        expediente: form.expediente.trim(),
+        first_names: form.first_names.trim(),
+        last_names: form.last_names.trim(),
+        dni_nie: form.dni_nie.trim(),
+        social_security_number: form.social_security_number.trim() || null,
+        birth_date: form.birth_date || null,
+        age: parsedAge,
+        sex: form.sex,
+        district: form.district.trim() || null,
+        municipality: form.municipality.trim() || null,
+        phone: form.phone.trim() || null,
+        email: form.email.trim() || null,
+        employment_status: form.employment_status,
+        notes: form.notes.trim() || null,
+      };
+
+      if (isCreateMode) {
+        const { data } = await api.post<{ studentId?: number }>("/students", payload);
+        const createdId = Number(data?.studentId);
+        if (Number.isFinite(createdId) && createdId > 0) {
+          navigate(`/students/${createdId}`, { state: { from: "/students" } });
+          return;
+        }
+        navigate("/students");
+        return;
+      }
+
+      await api.put(`/students/${id}`, payload);
+      navigate(`/students/${id}`, { state: { from: "/students" } });
+    } catch (err: any) {
+      const msg = err?.response?.data?.error || err?.response?.data?.message || err?.message || "Error al guardar alumno";
+      setError(msg);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <Box>
+        <Typography>Cargando alumno…</Typography>
+      </Box>
+    );
+  }
 
   return (
     <Box>
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
-        <Typography variant="h5">Editar alumno</Typography>
-        <Button component={RouterLink} to="/students">Volver</Button>
+        <Typography variant="h5">{isCreateMode ? "Nuevo alumno" : "Editar alumno"}</Typography>
+        <Button component={RouterLink} to="/students">
+          Volver
+        </Button>
       </Stack>
 
-      {/* Sección 1 - Datos personales (simple, sin guardado) */}
       <Paper sx={{ p: 2, mb: 2 }}>
-        <Typography variant="subtitle1" sx={{ mb: 1 }}>DATOS PERSONALES</Typography>
+        <Typography variant="subtitle1" sx={{ mb: 1 }}>
+          DATOS PERSONALES
+        </Typography>
+
+        {error && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {error}
+          </Alert>
+        )}
+
         <Grid container spacing={2}>
           <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-            <TextField fullWidth label="Nº EXPEDIENTE" size="small" defaultValue={data.expediente} />
+            <TextField
+              fullWidth
+              label="Nº EXPEDIENTE"
+              size="small"
+              required
+              value={form.expediente}
+              onChange={(e) => setForm((s) => ({ ...s, expediente: e.target.value }))}
+            />
           </Grid>
           <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-            <TextField fullWidth label="CURSO FORMACIÓN" size="small" defaultValue={data.cursoFormacion} />
+            <TextField
+              fullWidth
+              label="NOMBRE"
+              size="small"
+              required
+              value={form.first_names}
+              onChange={(e) => setForm((s) => ({ ...s, first_names: e.target.value }))}
+            />
           </Grid>
           <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-            <TextField fullWidth label="TECNICO LABORAL" size="small" defaultValue={data.tecnicoLaboral} />
+            <TextField
+              fullWidth
+              label="APELLIDOS"
+              size="small"
+              required
+              value={form.last_names}
+              onChange={(e) => setForm((s) => ({ ...s, last_names: e.target.value }))}
+            />
           </Grid>
           <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-            <TextField fullWidth label="NOMBRE" size="small" defaultValue={data.nombre} />
+            <TextField
+              fullWidth
+              label="DNI / NIE / PASAPORTE"
+              size="small"
+              required
+              value={form.dni_nie}
+              onChange={(e) => setForm((s) => ({ ...s, dni_nie: e.target.value }))}
+            />
           </Grid>
           <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-            <TextField fullWidth label="APELLIDOS" size="small" defaultValue={data.apellidos} />
+            <TextField
+              fullWidth
+              label="Nº SEGURIDAD SOCIAL"
+              size="small"
+              value={form.social_security_number}
+              onChange={(e) => setForm((s) => ({ ...s, social_security_number: e.target.value }))}
+            />
           </Grid>
           <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-            <TextField fullWidth label="DNI / NIE" size="small" defaultValue={data.dniNie} />
+            <DateTextField
+              fullWidth
+              label="FECHA NACIMIENTO"
+              size="small"
+              value={form.birth_date}
+              onChange={(nextIso) => setForm((s) => ({ ...s, birth_date: nextIso }))}
+              placeholder="dd/mm/aaaa"
+            />
           </Grid>
           <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-            <TextField fullWidth label="Nº SEGURIDAD SOCIAL" size="small" defaultValue={data.nss} />
+            <TextField
+              fullWidth
+              label="EDAD"
+              size="small"
+              type="number"
+              value={form.age}
+              onChange={(e) => setForm((s) => ({ ...s, age: e.target.value }))}
+            />
           </Grid>
           <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-            <TextField fullWidth label="FECHA NACIMIENTO" size="small" defaultValue={formatDateDMY(data.fechaNacimiento, "")} />
+            <TextField
+              fullWidth
+              select
+              label="SEXO"
+              size="small"
+              value={form.sex}
+              onChange={(e) => setForm((s) => ({ ...s, sex: e.target.value as StudentForm["sex"] }))}
+            >
+              <MenuItem value="unknown">Desconocido</MenuItem>
+              <MenuItem value="mujer">Mujer</MenuItem>
+              <MenuItem value="hombre">Hombre</MenuItem>
+              <MenuItem value="other">Otro</MenuItem>
+            </TextField>
           </Grid>
           <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-            <TextField fullWidth label="EDAD" size="small" defaultValue={data.edad} />
+            <TextField
+              fullWidth
+              label="DISTRITO"
+              size="small"
+              value={form.district}
+              onChange={(e) => setForm((s) => ({ ...s, district: e.target.value }))}
+            />
           </Grid>
           <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-            <TextField fullWidth label="DISTRITO" size="small" defaultValue={data.distrito} />
+            <TextField
+              fullWidth
+              label="MUNICIPIO"
+              size="small"
+              value={form.municipality}
+              onChange={(e) => setForm((s) => ({ ...s, municipality: e.target.value }))}
+            />
           </Grid>
           <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-            <TextField fullWidth label="TLF CONTACTO" size="small" defaultValue={data.telefono} />
+            <TextField
+              fullWidth
+              label="TLF CONTACTO"
+              size="small"
+              value={form.phone}
+              onChange={(e) => setForm((s) => ({ ...s, phone: e.target.value }))}
+            />
           </Grid>
           <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-            <TextField fullWidth label="E-MAIL" size="small" defaultValue={data.email} />
+            <TextField
+              fullWidth
+              label="E-MAIL"
+              size="small"
+              type="email"
+              value={form.email}
+              onChange={(e) => setForm((s) => ({ ...s, email: e.target.value }))}
+            />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6, md: 4 }}>
+            <TextField
+              fullWidth
+              select
+              label="SITUACIÓN LABORAL"
+              size="small"
+              value={form.employment_status}
+              onChange={(e) =>
+                setForm((s) => ({
+                  ...s,
+                  employment_status: e.target.value as StudentForm["employment_status"],
+                }))
+              }
+            >
+              <MenuItem value="unknown">Desconocido</MenuItem>
+              <MenuItem value="unemployed">Desempleado</MenuItem>
+              <MenuItem value="employed">Empleado</MenuItem>
+              <MenuItem value="improved">Buscando mejor opción</MenuItem>
+            </TextField>
+          </Grid>
+          <Grid size={{ xs: 12 }}>
+            <TextField
+              fullWidth
+              label="OBSERVACIONES"
+              size="small"
+              multiline
+              minRows={2}
+              value={form.notes}
+              onChange={(e) => setForm((s) => ({ ...s, notes: e.target.value }))}
+            />
           </Grid>
         </Grid>
       </Paper>
 
       <Stack direction="row" spacing={2}>
-        <Button variant="contained" disabled>Guardar (mock)</Button>
-        <Button component={RouterLink} to="/students">Cancelar</Button>
+        <Button variant="contained" onClick={save} disabled={saving || !canSave}>
+          {isCreateMode ? "Crear alumno" : "Guardar cambios"}
+        </Button>
+        <Button component={RouterLink} to="/students" disabled={saving}>
+          Cancelar
+        </Button>
       </Stack>
     </Box>
   );

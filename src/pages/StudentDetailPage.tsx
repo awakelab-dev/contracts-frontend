@@ -151,6 +151,19 @@ function employmentStatusText(s: unknown): string {
   }
 }
 
+function sexText(s: unknown): string {
+  switch ((s ?? "").toString().toLowerCase()) {
+    case "mujer":
+      return "Mujer";
+    case "hombre":
+      return "Hombre";
+    case "other":
+      return "Otro";
+    default:
+      return "Desconocido";
+  }
+}
+
 function statusChip(s: InvitationRow["status"]) {
   switch (s) {
     case "sent":
@@ -284,14 +297,19 @@ export default function StudentDetailPage() {
   const [editingStudent, setEditingStudent] = useState(false);
   const [savingStudent, setSavingStudent] = useState(false);
   const [studentDraft, setStudentDraft] = useState({
+    expediente: "",
     first_names: "",
     last_names: "",
     dni_nie: "",
     social_security_number: "",
     birth_date: "",
+    age: "",
+    sex: "unknown" as "mujer" | "hombre" | "other" | "unknown",
     district: "",
+    municipality: "",
     phone: "",
     email: "",
+    notes: "",
     employment_status: "unknown" as "unemployed" | "employed" | "improved" | "unknown",
   });
 
@@ -529,45 +547,68 @@ export default function StudentDetailPage() {
   useEffect(() => {
     if (!student) return;
     setStudentDraft({
+      expediente: student.expediente || "",
       first_names: student.first_names || "",
       last_names: student.last_names || "",
       dni_nie: student.dni_nie || "",
       social_security_number: student.social_security_number || "",
       birth_date: fmtDate(student.birth_date),
+      age: student.age != null ? String(student.age) : "",
+      sex: (student.sex || "unknown") as any,
       district: student.district || "",
+      municipality: student.municipality || "",
       phone: student.phone || "",
       email: student.email || "",
+      notes: student.notes || "",
       employment_status: (student.employment_status || "unknown") as any,
     });
   }, [student]);
 
   async function saveStudent() {
     if (!student) return;
+    const ageValue = studentDraft.age.trim();
+    const parsedAge = ageValue ? Number.parseInt(ageValue, 10) : null;
+    if (ageValue) {
+      if (parsedAge === null || Number.isNaN(parsedAge) || parsedAge <= 0) {
+        setActionError("La edad debe ser un número válido.");
+        return;
+      }
+    }
     try {
       setActionError(null);
       setSavingStudent(true);
       await api.put(`/students/${student.id}`, {
+        expediente: studentDraft.expediente,
         first_names: studentDraft.first_names,
         last_names: studentDraft.last_names,
         dni_nie: studentDraft.dni_nie,
         social_security_number: studentDraft.social_security_number || null,
         birth_date: studentDraft.birth_date || null,
+        age: parsedAge,
+        sex: studentDraft.sex,
         district: studentDraft.district || null,
+        municipality: studentDraft.municipality || null,
         phone: studentDraft.phone || null,
         email: studentDraft.email || null,
+        notes: studentDraft.notes || null,
         employment_status: studentDraft.employment_status,
       });
 
       setStudent({
         ...student,
+        expediente: studentDraft.expediente,
         first_names: studentDraft.first_names,
         last_names: studentDraft.last_names,
         dni_nie: studentDraft.dni_nie,
         social_security_number: studentDraft.social_security_number || null,
         birth_date: studentDraft.birth_date || null,
+        age: parsedAge,
+        sex: studentDraft.sex,
         district: studentDraft.district || null,
+        municipality: studentDraft.municipality || null,
         phone: studentDraft.phone || null,
         email: studentDraft.email || null,
+        notes: studentDraft.notes || null,
         employment_status: studentDraft.employment_status,
       });
 
@@ -1015,7 +1056,7 @@ export default function StudentDetailPage() {
         <Stack>
           <Typography variant="h5">{`${student.first_names} ${student.last_names}`.trim()}</Typography>
           <Typography variant="body2" color="text.secondary">
-            Nº expediente: {student.id}
+            Nº expediente: {student.expediente || student.id}
           </Typography>
         </Stack>
         <Button onClick={handleBack}>Volver</Button>
@@ -1059,14 +1100,19 @@ export default function StudentDetailPage() {
                           onClick={() => {
                             setEditingStudent(false);
                             setStudentDraft({
+                              expediente: student.expediente || "",
                               first_names: student.first_names || "",
                               last_names: student.last_names || "",
                               dni_nie: student.dni_nie || "",
                               social_security_number: student.social_security_number || "",
                               birth_date: fmtDate(student.birth_date),
+                              age: student.age != null ? String(student.age) : "",
+                              sex: (student.sex || "unknown") as any,
                               district: student.district || "",
+                              municipality: student.municipality || "",
                               phone: student.phone || "",
                               email: student.email || "",
+                              notes: student.notes || "",
                               employment_status: (student.employment_status || "unknown") as any,
                             });
                           }}
@@ -1080,6 +1126,19 @@ export default function StudentDetailPage() {
                   <Divider sx={{ mb: 1.5 }} />
 
                   <Stack spacing={1}>
+                    <InfoRow label="Nº expediente">
+                      {editingStudent ? (
+                        <TextField
+                          size="small"
+                          value={studentDraft.expediente}
+                          onChange={(e) => setStudentDraft((d) => ({ ...d, expediente: e.target.value }))}
+                          fullWidth
+                        />
+                      ) : (
+                        <Typography variant="body2">{student.expediente || "-"}</Typography>
+                      )}
+                    </InfoRow>
+
                     <InfoRow label="Nombres">
                       {editingStudent ? (
                         <TextField
@@ -1106,7 +1165,7 @@ export default function StudentDetailPage() {
                       )}
                     </InfoRow>
 
-                    <InfoRow label="DNI / NIE">
+                    <InfoRow label="DNI / NIE / Pasaporte">
                       {editingStudent ? (
                         <TextField
                           size="small"
@@ -1146,6 +1205,48 @@ export default function StudentDetailPage() {
                       )}
                     </InfoRow>
 
+                    <InfoRow label="Edad">
+                      {editingStudent ? (
+                        <TextField
+                          size="small"
+                          type="number"
+                          value={studentDraft.age}
+                          onChange={(e) => setStudentDraft((d) => ({ ...d, age: e.target.value }))}
+                          fullWidth
+                        />
+                      ) : (
+                        <Typography variant="body2">{student.age ?? "-"}</Typography>
+                      )}
+                    </InfoRow>
+
+                    <InfoRow label="Sexo">
+                      {editingStudent ? (
+                        <TextField
+                          select
+                          size="small"
+                          fullWidth
+                          value={studentDraft.sex}
+                          onChange={(e) =>
+                            setStudentDraft((d) => ({
+                              ...d,
+                              sex: e.target.value as any,
+                            }))
+                          }
+                        >
+                          <MenuItem value="mujer">Mujer</MenuItem>
+                          <MenuItem value="hombre">Hombre</MenuItem>
+                          <MenuItem value="other">Otro</MenuItem>
+                          {studentDraft.sex === "unknown" && (
+                            <MenuItem value="unknown" disabled>
+                              Desconocido
+                            </MenuItem>
+                          )}
+                        </TextField>
+                      ) : (
+                        <Typography variant="body2">{sexText(student.sex)}</Typography>
+                      )}
+                    </InfoRow>
+
                     <InfoRow label="Distrito">
                       {editingStudent ? (
                         <TextField
@@ -1156,6 +1257,19 @@ export default function StudentDetailPage() {
                         />
                       ) : (
                         <Typography variant="body2">{student.district ?? "-"}</Typography>
+                      )}
+                    </InfoRow>
+
+                    <InfoRow label="Municipio">
+                      {editingStudent ? (
+                        <TextField
+                          size="small"
+                          value={studentDraft.municipality}
+                          onChange={(e) => setStudentDraft((d) => ({ ...d, municipality: e.target.value }))}
+                          fullWidth
+                        />
+                      ) : (
+                        <Typography variant="body2">{student.municipality ?? "-"}</Typography>
                       )}
                     </InfoRow>
 
@@ -1211,6 +1325,21 @@ export default function StudentDetailPage() {
                         </TextField>
                       ) : (
                         <Chip size="small" label={employmentStatusText(student.employment_status)} />
+                      )}
+                    </InfoRow>
+
+                    <InfoRow label="Observaciones">
+                      {editingStudent ? (
+                        <TextField
+                          size="small"
+                          value={studentDraft.notes}
+                          onChange={(e) => setStudentDraft((d) => ({ ...d, notes: e.target.value }))}
+                          multiline
+                          minRows={2}
+                          fullWidth
+                        />
+                      ) : (
+                        <Typography variant="body2">{student.notes ?? "-"}</Typography>
                       )}
                     </InfoRow>
                   </Stack>

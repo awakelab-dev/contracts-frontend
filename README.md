@@ -2,6 +2,14 @@
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
+## Configuración de API para este proyecto
+
+- Variable principal: `VITE_API_URL`
+- Valor local recomendado: `http://localhost:4000/api`
+- También se admite `VITE_API_BASE_URL` por compatibilidad, pero se recomienda usar `VITE_API_URL`.
+
+La app normaliza automáticamente la URL (por ejemplo, quita un `/auth` final accidental) y usa cookies de sesión para autenticación.
+
 Currently, two official plugins are available:
 
 - [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
