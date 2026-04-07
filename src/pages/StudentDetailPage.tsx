@@ -26,7 +26,8 @@ import {
   Typography,
 } from "@mui/material";
 import api from "../lib/api";
-import type { Company, Interview, Student, Vacancy } from "../types";
+import { fetchDistricts, fetchMunicipalities } from "../api/locations";
+import type { Company, Interview, LocationDistrict, LocationMunicipality, Student, Vacancy } from "../types";
 import { scoreColor } from "../utils/MatchingEngine";
 import { formatDateDMY } from "../utils/date";
 import DateTextField from "../components/DateTextField";
@@ -136,6 +137,14 @@ function fmtDate(v: unknown): string {
   if (v instanceof Date) return v.toISOString().slice(0, 10);
   const s = String(v);
   return s.length >= 10 ? s.slice(0, 10) : s;
+}
+
+function parseCode(value: string) {
+  const cleaned = value.trim();
+  if (!cleaned) return null;
+  if (!/^\d+$/.test(cleaned)) return null;
+  const parsed = Number.parseInt(cleaned, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
 function employmentStatusText(s: unknown): string {
@@ -296,6 +305,8 @@ export default function StudentDetailPage() {
   // Student editing
   const [editingStudent, setEditingStudent] = useState(false);
   const [savingStudent, setSavingStudent] = useState(false);
+  const [districtOptions, setDistrictOptions] = useState<LocationDistrict[]>([]);
+  const [municipalityOptions, setMunicipalityOptions] = useState<LocationMunicipality[]>([]);
   const [studentDraft, setStudentDraft] = useState({
     expediente: "",
     first_names: "",
@@ -305,8 +316,8 @@ export default function StudentDetailPage() {
     birth_date: "",
     age: "",
     sex: "unknown" as "mujer" | "hombre" | "other" | "unknown",
-    district: "",
-    municipality: "",
+    district_code: "",
+    municipality_code: "",
     phone: "",
     email: "",
     notes: "",
@@ -420,6 +431,18 @@ export default function StudentDetailPage() {
     return m;
   }, [companies]);
 
+  const districtNameByCode = useMemo(() => {
+    const m = new Map<number, string>();
+    districtOptions.forEach((district) => m.set(district.code, district.name));
+    return m;
+  }, [districtOptions]);
+
+  const municipalityNameByCode = useMemo(() => {
+    const m = new Map<number, string>();
+    municipalityOptions.forEach((municipality) => m.set(municipality.code, municipality.name));
+    return m;
+  }, [municipalityOptions]);
+
 
   const lastCourses = useMemo(() => {
     return [...courses]
@@ -509,6 +532,43 @@ export default function StudentDetailPage() {
   }
 
   useEffect(() => {
+    let cancel = false;
+    fetchMunicipalities()
+      .then((rows) => {
+        if (cancel) return;
+        setMunicipalityOptions(rows);
+      })
+      .catch(() => {
+        if (cancel) return;
+        setMunicipalityOptions([]);
+      });
+    return () => {
+      cancel = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!studentDraft.municipality_code) {
+      setDistrictOptions([]);
+      return;
+    }
+
+    let cancel = false;
+    fetchDistricts(studentDraft.municipality_code)
+      .then((rows) => {
+        if (cancel) return;
+        setDistrictOptions(rows);
+      })
+      .catch(() => {
+        if (cancel) return;
+        setDistrictOptions([]);
+      });
+    return () => {
+      cancel = true;
+    };
+  }, [studentDraft.municipality_code]);
+
+  useEffect(() => {
     if (!sid) return;
     let cancel = false;
     setLoading(true);
@@ -555,8 +615,8 @@ export default function StudentDetailPage() {
       birth_date: fmtDate(student.birth_date),
       age: student.age != null ? String(student.age) : "",
       sex: (student.sex || "unknown") as any,
-      district: student.district || "",
-      municipality: student.municipality || "",
+      district_code: student.district_code != null ? String(student.district_code) : "",
+      municipality_code: student.municipality_code != null ? String(student.municipality_code) : "",
       phone: student.phone || "",
       email: student.email || "",
       notes: student.notes || "",
@@ -568,6 +628,8 @@ export default function StudentDetailPage() {
     if (!student) return;
     const ageValue = studentDraft.age.trim();
     const parsedAge = ageValue ? Number.parseInt(ageValue, 10) : null;
+    const parsedDistrictCode = parseCode(studentDraft.district_code);
+    const parsedMunicipalityCode = parseCode(studentDraft.municipality_code);
     if (ageValue) {
       if (parsedAge === null || Number.isNaN(parsedAge) || parsedAge <= 0) {
         setActionError("La edad debe ser un número válido.");
@@ -586,8 +648,8 @@ export default function StudentDetailPage() {
         birth_date: studentDraft.birth_date || null,
         age: parsedAge,
         sex: studentDraft.sex,
-        district: studentDraft.district || null,
-        municipality: studentDraft.municipality || null,
+        district_code: parsedDistrictCode,
+        municipality_code: parsedMunicipalityCode,
         phone: studentDraft.phone || null,
         email: studentDraft.email || null,
         notes: studentDraft.notes || null,
@@ -604,8 +666,14 @@ export default function StudentDetailPage() {
         birth_date: studentDraft.birth_date || null,
         age: parsedAge,
         sex: studentDraft.sex,
-        district: studentDraft.district || null,
-        municipality: studentDraft.municipality || null,
+        district_code: parsedDistrictCode,
+        municipality_code: parsedMunicipalityCode,
+        district: parsedDistrictCode
+          ? districtNameByCode.get(parsedDistrictCode) || null
+          : null,
+        municipality: parsedMunicipalityCode
+          ? municipalityNameByCode.get(parsedMunicipalityCode) || null
+          : null,
         phone: studentDraft.phone || null,
         email: studentDraft.email || null,
         notes: studentDraft.notes || null,
@@ -1108,8 +1176,8 @@ export default function StudentDetailPage() {
                               birth_date: fmtDate(student.birth_date),
                               age: student.age != null ? String(student.age) : "",
                               sex: (student.sex || "unknown") as any,
-                              district: student.district || "",
-                              municipality: student.municipality || "",
+                              district_code: student.district_code != null ? String(student.district_code) : "",
+                              municipality_code: student.municipality_code != null ? String(student.municipality_code) : "",
                               phone: student.phone || "",
                               email: student.email || "",
                               notes: student.notes || "",
@@ -1247,29 +1315,57 @@ export default function StudentDetailPage() {
                       )}
                     </InfoRow>
 
-                    <InfoRow label="Distrito">
-                      {editingStudent ? (
-                        <TextField
-                          size="small"
-                          value={studentDraft.district}
-                          onChange={(e) => setStudentDraft((d) => ({ ...d, district: e.target.value }))}
-                          fullWidth
-                        />
-                      ) : (
-                        <Typography variant="body2">{student.district ?? "-"}</Typography>
-                      )}
-                    </InfoRow>
-
                     <InfoRow label="Municipio">
                       {editingStudent ? (
                         <TextField
+                          select
                           size="small"
-                          value={studentDraft.municipality}
-                          onChange={(e) => setStudentDraft((d) => ({ ...d, municipality: e.target.value }))}
+                          value={studentDraft.municipality_code}
+                          onChange={(e) =>
+                            setStudentDraft((d) => ({
+                              ...d,
+                              municipality_code: e.target.value,
+                              district_code: "",
+                            }))
+                          }
                           fullWidth
-                        />
+                        >
+                          <MenuItem value="">Sin municipio</MenuItem>
+                          {municipalityOptions.map((municipality) => (
+                            <MenuItem key={municipality.code} value={String(municipality.code)}>
+                              {municipality.name}
+                            </MenuItem>
+                          ))}
+                        </TextField>
                       ) : (
                         <Typography variant="body2">{student.municipality ?? "-"}</Typography>
+                      )}
+                    </InfoRow>
+
+                    <InfoRow label="Distrito">
+                      {editingStudent ? (
+                        <TextField
+                          select
+                          size="small"
+                          disabled={!studentDraft.municipality_code}
+                          value={studentDraft.district_code}
+                          onChange={(e) =>
+                            setStudentDraft((d) => ({
+                              ...d,
+                              district_code: e.target.value,
+                            }))
+                          }
+                          fullWidth
+                        >
+                          <MenuItem value="">Sin distrito</MenuItem>
+                          {districtOptions.map((district) => (
+                            <MenuItem key={district.code} value={String(district.code)}>
+                              {district.name}
+                            </MenuItem>
+                          ))}
+                        </TextField>
+                      ) : (
+                        <Typography variant="body2">{student.district ?? "-"}</Typography>
                       )}
                     </InfoRow>
 

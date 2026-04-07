@@ -10,12 +10,25 @@ export interface Student {
   birth_date?: string | null; // YYYY-MM-DD
   age?: number | null;
   sex?: "mujer" | "hombre" | "other" | "unknown" | null;
+  district_code?: number | null;
+  municipality_code?: number | null;
   district?: string | null;
   municipality?: string | null;
   phone?: string | null;
   email?: string | null;
   employment_status: string; // 'unemployed' | 'employed' | 'improved' | 'unknown'
   notes?: string | null;
+}
+
+export interface LocationDistrict {
+  code: number;
+  municipality_code: number;
+  name: string;
+}
+
+export interface LocationMunicipality {
+  code: number;
+  name: string;
 }
 
 export interface Company {

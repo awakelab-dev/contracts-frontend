@@ -12,7 +12,8 @@ import {
   Typography,
 } from "@mui/material";
 import api from "../lib/api";
-import type { Student } from "../types";
+import { fetchDistricts, fetchMunicipalities } from "../api/locations";
+import type { LocationDistrict, LocationMunicipality, Student } from "../types";
 import DateTextField from "../components/DateTextField";
 
 type StudentForm = {
@@ -24,8 +25,8 @@ type StudentForm = {
   birth_date: string;
   age: string;
   sex: "mujer" | "hombre" | "other" | "unknown";
-  district: string;
-  municipality: string;
+  district_code: string;
+  municipality_code: string;
   phone: string;
   email: string;
   employment_status: "unemployed" | "employed" | "improved" | "unknown";
@@ -41,13 +42,21 @@ const EMPTY_FORM: StudentForm = {
   birth_date: "",
   age: "",
   sex: "unknown",
-  district: "",
-  municipality: "",
+  district_code: "",
+  municipality_code: "",
   phone: "",
   email: "",
   employment_status: "unknown",
   notes: "",
 };
+
+function parseCode(value: string) {
+  const cleaned = value.trim();
+  if (!cleaned) return null;
+  if (!/^\d+$/.test(cleaned)) return null;
+  const parsed = Number.parseInt(cleaned, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
 
 function toForm(student: Student): StudentForm {
   return {
@@ -59,8 +68,8 @@ function toForm(student: Student): StudentForm {
     birth_date: student.birth_date ? String(student.birth_date).slice(0, 10) : "",
     age: student.age != null ? String(student.age) : "",
     sex: (student.sex || "unknown") as StudentForm["sex"],
-    district: student.district || "",
-    municipality: student.municipality || "",
+    district_code: student.district_code != null ? String(student.district_code) : "",
+    municipality_code: student.municipality_code != null ? String(student.municipality_code) : "",
     phone: student.phone || "",
     email: student.email || "",
     employment_status: (student.employment_status || "unknown") as StudentForm["employment_status"],
@@ -77,6 +86,44 @@ export default function StudentEditPage() {
   const [loading, setLoading] = useState(!isCreateMode);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [districtOptions, setDistrictOptions] = useState<LocationDistrict[]>([]);
+  const [municipalityOptions, setMunicipalityOptions] = useState<LocationMunicipality[]>([]);
+
+  useEffect(() => {
+    let cancel = false;
+    fetchMunicipalities()
+      .then((rows) => {
+        if (cancel) return;
+        setMunicipalityOptions(rows);
+      })
+      .catch(() => {
+        if (cancel) return;
+        setMunicipalityOptions([]);
+      });
+    return () => {
+      cancel = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!form.municipality_code) {
+      setDistrictOptions([]);
+      return;
+    }
+    let cancel = false;
+    fetchDistricts(form.municipality_code)
+      .then((rows) => {
+        if (cancel) return;
+        setDistrictOptions(rows);
+      })
+      .catch(() => {
+        if (cancel) return;
+        setDistrictOptions([]);
+      });
+    return () => {
+      cancel = true;
+    };
+  }, [form.municipality_code]);
 
   useEffect(() => {
     if (isCreateMode) {
@@ -143,8 +190,8 @@ export default function StudentEditPage() {
         birth_date: form.birth_date || null,
         age: parsedAge,
         sex: form.sex,
-        district: form.district.trim() || null,
-        municipality: form.municipality.trim() || null,
+        district_code: parseCode(form.district_code),
+        municipality_code: parseCode(form.municipality_code),
         phone: form.phone.trim() || null,
         email: form.email.trim() || null,
         employment_status: form.employment_status,
@@ -288,20 +335,48 @@ export default function StudentEditPage() {
           <Grid size={{ xs: 12, sm: 6, md: 4 }}>
             <TextField
               fullWidth
-              label="DISTRITO"
+              select
+              label="MUNICIPIO"
               size="small"
-              value={form.district}
-              onChange={(e) => setForm((s) => ({ ...s, district: e.target.value }))}
-            />
+              value={form.municipality_code}
+              onChange={(e) =>
+                setForm((s) => ({
+                  ...s,
+                  municipality_code: e.target.value,
+                  district_code: "",
+                }))
+              }
+            >
+              <MenuItem value="">Sin municipio</MenuItem>
+              {municipalityOptions.map((municipality) => (
+                <MenuItem key={municipality.code} value={String(municipality.code)}>
+                  {municipality.name}
+                </MenuItem>
+              ))}
+            </TextField>
           </Grid>
           <Grid size={{ xs: 12, sm: 6, md: 4 }}>
             <TextField
               fullWidth
-              label="MUNICIPIO"
+              select
+              label="DISTRITO"
               size="small"
-              value={form.municipality}
-              onChange={(e) => setForm((s) => ({ ...s, municipality: e.target.value }))}
-            />
+              disabled={!form.municipality_code}
+              value={form.district_code}
+              onChange={(e) =>
+                setForm((s) => ({
+                  ...s,
+                  district_code: e.target.value,
+                }))
+              }
+            >
+              <MenuItem value="">Sin distrito</MenuItem>
+              {districtOptions.map((district) => (
+                <MenuItem key={district.code} value={String(district.code)}>
+                  {district.name}
+                </MenuItem>
+              ))}
+            </TextField>
           </Grid>
           <Grid size={{ xs: 12, sm: 6, md: 4 }}>
             <TextField

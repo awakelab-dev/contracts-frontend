@@ -21,7 +21,8 @@ import {
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 import api from "../lib/api";
-import type { Student } from "../types";
+import { fetchDistricts, fetchMunicipalities } from "../api/locations";
+import type { LocationDistrict, LocationMunicipality, Student } from "../types";
 import DownloadIcon from "@mui/icons-material/Download";
 import { exportToCsv } from "../utils/CsvExporter";
 import type { CsvColumn } from "../utils/CsvExporter";
@@ -53,8 +54,8 @@ type NewStudentForm = {
   birth_date: string;
   age: string;
   sex: "mujer" | "hombre" | "other" | "unknown";
-  district: string;
-  municipality: string;
+  district_code: string;
+  municipality_code: string;
   phone: string;
   email: string;
   employment_status: "unemployed" | "employed" | "improved" | "unknown";
@@ -70,8 +71,8 @@ const EMPTY_NEW_STUDENT_FORM: NewStudentForm = {
   birth_date: "",
   age: "",
   sex: "unknown",
-  district: "",
-  municipality: "",
+  district_code: "",
+  municipality_code: "",
   phone: "",
   email: "",
   employment_status: "unknown",
@@ -84,6 +85,14 @@ function sexLabel(sex?: string | null) {
   if (key === "hombre") return "Hombre";
   if (key === "other") return "Otro";
   return "-";
+}
+
+function parseCode(value: string) {
+  const cleaned = value.trim();
+  if (!cleaned) return null;
+  if (!/^\d+$/.test(cleaned)) return null;
+  const parsed = Number.parseInt(cleaned, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
 export default function StudentsListPage() {
@@ -100,6 +109,8 @@ export default function StudentsListPage() {
   const [createSaving, setCreateSaving] = React.useState(false);
   const [createError, setCreateError] = React.useState<string | null>(null);
   const [newStudent, setNewStudent] = React.useState<NewStudentForm>(EMPTY_NEW_STUDENT_FORM);
+  const [districtOptions, setDistrictOptions] = React.useState<LocationDistrict[]>([]);
+  const [municipalityOptions, setMunicipalityOptions] = React.useState<LocationMunicipality[]>([]);
 
   React.useEffect(() => {
     let cancel = false;
@@ -124,6 +135,43 @@ export default function StudentsListPage() {
       cancel = true;
     };
   }, []);
+
+  React.useEffect(() => {
+    let cancel = false;
+    fetchMunicipalities()
+      .then((rows) => {
+        if (cancel) return;
+        setMunicipalityOptions(rows);
+      })
+      .catch(() => {
+        if (cancel) return;
+        setMunicipalityOptions([]);
+      });
+    return () => {
+      cancel = true;
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (!newStudent.municipality_code) {
+      setDistrictOptions([]);
+      return;
+    }
+
+    let cancel = false;
+    fetchDistricts(newStudent.municipality_code)
+      .then((rows) => {
+        if (cancel) return;
+        setDistrictOptions(rows);
+      })
+      .catch(() => {
+        if (cancel) return;
+        setDistrictOptions([]);
+      });
+    return () => {
+      cancel = true;
+    };
+  }, [newStudent.municipality_code]);
 
   const openCreateStudent = () => {
     setCreateError(null);
@@ -165,8 +213,8 @@ export default function StudentsListPage() {
         birth_date: newStudent.birth_date || null,
         age: parsedAge,
         sex: newStudent.sex,
-        district: newStudent.district.trim() || null,
-        municipality: newStudent.municipality.trim() || null,
+        district_code: parseCode(newStudent.district_code),
+        municipality_code: parseCode(newStudent.municipality_code),
         phone: newStudent.phone.trim() || null,
         email: newStudent.email.trim() || null,
         employment_status: newStudent.employment_status,
@@ -436,19 +484,47 @@ export default function StudentsListPage() {
 
             <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
               <TextField
-                label="Distrito"
-                size="small"
-                fullWidth
-                value={newStudent.district}
-                onChange={(e) => setNewStudent((s) => ({ ...s, district: e.target.value }))}
-              />
-              <TextField
                 label="Municipio"
+                select
                 size="small"
                 fullWidth
-                value={newStudent.municipality}
-                onChange={(e) => setNewStudent((s) => ({ ...s, municipality: e.target.value }))}
-              />
+                value={newStudent.municipality_code}
+                onChange={(e) =>
+                  setNewStudent((s) => ({
+                    ...s,
+                    municipality_code: e.target.value,
+                    district_code: "",
+                  }))
+                }
+              >
+                <MenuItem value="">Sin municipio</MenuItem>
+                {municipalityOptions.map((municipality) => (
+                  <MenuItem key={municipality.code} value={String(municipality.code)}>
+                    {municipality.name}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <TextField
+                label="Distrito"
+                select
+                size="small"
+                fullWidth
+                disabled={!newStudent.municipality_code}
+                value={newStudent.district_code}
+                onChange={(e) =>
+                  setNewStudent((s) => ({
+                    ...s,
+                    district_code: e.target.value,
+                  }))
+                }
+              >
+                <MenuItem value="">Sin distrito</MenuItem>
+                {districtOptions.map((district) => (
+                  <MenuItem key={district.code} value={String(district.code)}>
+                    {district.name}
+                  </MenuItem>
+                ))}
+              </TextField>
             </Stack>
 
             <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
