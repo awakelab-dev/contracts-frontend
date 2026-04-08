@@ -41,6 +41,12 @@ type StudentCourse = {
   start_date?: string | null;
   end_date?: string | null;
 };
+type EnrolledItineraryCourse = {
+  expediente: string;
+  course_code: string;
+  dni_nie: string;
+  itinerary_name: string;
+};
 
 type InvitationRow = {
   id: number;
@@ -279,6 +285,7 @@ export default function StudentDetailPage() {
   const [recommended, setRecommended] = useState<Array<{ vacancy: Vacancy; score: number }>>([]);
 
   const [courses, setCourses] = useState<StudentCourse[]>([]);
+  const [enrolledCourses, setEnrolledCourses] = useState<EnrolledItineraryCourse[]>([]);
   const [interviews, setInterviews] = useState<Interview[]>([]);
   const [invitations, setInvitations] = useState<InvitationRow[]>([]);
   const [pnlRows, setPnlRows] = useState<PnlRow[]>([]);
@@ -435,6 +442,8 @@ export default function StudentDetailPage() {
       .sort((a, b) => (fmtDate(b.end_date || b.start_date) || "").localeCompare(fmtDate(a.end_date || a.start_date) || ""))
       .slice(0, 4);
   }, [courses]);
+  const itineraryCoursesSummary = useMemo(() => enrolledCourses.slice(0, 4), [enrolledCourses]);
+  const totalCoursesCount = courses.length + enrolledCourses.length;
 
   const recommendedTop2 = useMemo(() => recommended.slice(0, 2), [recommended]);
 
@@ -488,12 +497,13 @@ export default function StudentDetailPage() {
 
   async function fetchAll(currentSid: string) {
     const n = Number(currentSid);
-    const [sRes, vRes, cRes, iRes, scRes, invRes, pnlRes, hcRes, mRes] = await Promise.all([
+    const [sRes, vRes, cRes, iRes, scRes, ecRes, invRes, pnlRes, hcRes, mRes] = await Promise.all([
       api.get<Student>(`/students/${currentSid}`),
       api.get<Vacancy[]>(`/vacancies`),
       api.get<Company[]>(`/companies`),
       api.get<Interview[]>(`/interviews`, { params: { student_id: n } }),
       api.get<StudentCourse[]>(`/student-courses`, { params: { student_id: n } }),
+      api.get<EnrolledItineraryCourse[]>(`/students/${currentSid}/enrolled-courses`),
       api.get<InvitationRow[]>(`/invitations`, { params: { student_id: n } }),
       api.get<PnlRow[]>(`/pnl`, { params: { student_id: n } }),
       api.get<HiringContractRow[]>(`/hiring-contracts`, { params: { student_id: n } }),
@@ -508,6 +518,7 @@ export default function StudentDetailPage() {
       companies: Array.isArray(cRes.data) ? cRes.data : [],
       interviews: Array.isArray(iRes.data) ? iRes.data : [],
       courses: Array.isArray(scRes.data) ? scRes.data : [],
+      enrolledCourses: Array.isArray(ecRes.data) ? ecRes.data : [],
       invitations: Array.isArray(invRes.data) ? invRes.data : [],
       pnlRows: Array.isArray(pnlRes.data) ? pnlRes.data : [],
       contracts: Array.isArray(hcRes.data) ? hcRes.data : [],
@@ -571,6 +582,7 @@ export default function StudentDetailPage() {
         setCompanies(data.companies);
         setInterviews(data.interviews);
         setCourses(data.courses);
+        setEnrolledCourses(data.enrolledCourses);
         setInvitations(data.invitations);
         setPnlRows(data.pnlRows);
         setContracts(data.contracts);
@@ -1581,26 +1593,50 @@ export default function StudentDetailPage() {
             <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
               <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
                 <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                  Cursos realizados ({courses.length})
+                  Cursos realizados ({totalCoursesCount})
                 </Typography>
                 <Button size="small" variant="outlined" onClick={() => setCoursesOpen(true)}>
                   Ver detalles
                 </Button>
               </Stack>
               <Divider sx={{ mb: 1.5 }} />
+              {lastCourses.length || itineraryCoursesSummary.length ? (
+                <Stack spacing={1.5}>
+                  {itineraryCoursesSummary.length > 0 && (
+                    <Stack spacing={1}>
+                      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
+                        Itinerarios matriculados
+                      </Typography>
+                      {itineraryCoursesSummary.map((course) => (
+                        <Box key={course.expediente}>
+                          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                            {course.itinerary_name || course.course_code}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {`Código: ${course.course_code} · Expediente: ${course.expediente}`}
+                          </Typography>
+                        </Box>
+                      ))}
+                    </Stack>
+                  )}
 
-              {lastCourses.length ? (
-                <Stack spacing={1}>
-                  {lastCourses.map((c) => (
-                    <Box key={c.id}>
-                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                        {c.title}
+                  {lastCourses.length > 0 && (
+                    <Stack spacing={1}>
+                      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
+                        Cursos manuales
                       </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {(c.institution || "-") + " · " + formatDateDMY(c.start_date) + " → " + formatDateDMY(c.end_date)}
-                      </Typography>
-                    </Box>
-                  ))}
+                      {lastCourses.map((c) => (
+                        <Box key={c.id}>
+                          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                            {c.title}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {(c.institution || "-") + " · " + formatDateDMY(c.start_date) + " → " + formatDateDMY(c.end_date)}
+                          </Typography>
+                        </Box>
+                      ))}
+                    </Stack>
+                  )}
                 </Stack>
               ) : (
                 <Typography color="text.secondary">Sin cursos registrados</Typography>
@@ -1667,6 +1703,33 @@ export default function StudentDetailPage() {
         <DialogTitle>Cursos realizados</DialogTitle>
         <DialogContent dividers>
           <Stack spacing={2}>
+            <Paper variant="outlined" sx={{ borderRadius: 2, overflow: "hidden" }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Itinerario</TableCell>
+                    <TableCell>Código curso</TableCell>
+                    <TableCell>Expediente</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {enrolledCourses.map((course) => (
+                    <TableRow key={course.expediente} hover>
+                      <TableCell>{course.itinerary_name || "-"}</TableCell>
+                      <TableCell>{course.course_code}</TableCell>
+                      <TableCell>{course.expediente}</TableCell>
+                    </TableRow>
+                  ))}
+                  {enrolledCourses.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={3} align="center" sx={{ py: 3, color: "text.secondary" }}>
+                        Sin itinerarios matriculados
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </Paper>
             <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
               <Typography variant="subtitle2" sx={{ mb: 1 }}>
                 {courseForm.id ? "Editar curso" : "Nuevo curso"}
