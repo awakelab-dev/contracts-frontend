@@ -555,7 +555,7 @@ export default function LiquidacionPage() {
                           {`${s.first_names} ${s.last_names}`.trim() || `ID #${s.student_id}`}
                         </Typography>
                         <Typography variant="caption" color="text.secondary">
-                          Nº expediente: {s.student_id}
+                          ID alumno: {s.student_id}
                         </Typography>
                       </TableCell>
                       <TableCell sx={{ whiteSpace: "nowrap" }}>{fmtDateEs(s.eligible_from_date)}</TableCell>
@@ -644,7 +644,7 @@ export default function LiquidacionPage() {
                               {`${l.first_names} ${l.last_names}`.trim() || `ID #${l.student_id}`}
                             </Typography>
                             <Typography variant="caption" color="text.secondary">
-                              Nº expediente: {l.student_id}
+                              ID alumno: {l.student_id}
                             </Typography>
                           </TableCell>
                           <TableCell align="right">{Number(l.opening_fte_days).toFixed(2)}</TableCell>
@@ -783,7 +783,7 @@ export default function LiquidacionPage() {
                             {`${l.first_names} ${l.last_names}`.trim() || `ID #${l.student_id}`}
                           </Typography>
                           <Typography variant="caption" color="text.secondary">
-                            Nº expediente: {l.student_id}
+                            ID alumno: {l.student_id}
                           </Typography>
                         </TableCell>
                         <TableCell align="right">{Number(l.opening_fte_days).toFixed(2)}</TableCell>

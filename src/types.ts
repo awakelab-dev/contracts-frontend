@@ -1,14 +1,12 @@
 // Shared application types
 
 export interface Student {
-  id: number; // Nº Expediente
-  expediente?: string | null;
+  id: number; // interno
   first_names: string;
   last_names: string;
   dni_nie: string;
   social_security_number?: string | null;
   birth_date?: string | null; // YYYY-MM-DD
-  age?: number | null;
   sex?: "mujer" | "hombre" | "other" | "unknown" | null;
   district_code?: number | null;
   municipality_code?: number | null;
@@ -16,7 +14,6 @@ export interface Student {
   municipality?: string | null;
   phone?: string | null;
   email?: string | null;
-  employment_status: string; // 'unemployed' | 'employed' | 'improved' | 'unknown'
   notes?: string | null;
 }
 

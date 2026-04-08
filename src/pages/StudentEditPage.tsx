@@ -15,38 +15,33 @@ import api from "../lib/api";
 import { fetchDistricts, fetchMunicipalities } from "../api/locations";
 import type { LocationDistrict, LocationMunicipality, Student } from "../types";
 import DateTextField from "../components/DateTextField";
+import { calculateAgeFromBirthDate } from "../utils/date";
 
 type StudentForm = {
-  expediente: string;
   first_names: string;
   last_names: string;
   dni_nie: string;
   social_security_number: string;
   birth_date: string;
-  age: string;
   sex: "mujer" | "hombre" | "other" | "unknown";
   district_code: string;
   municipality_code: string;
   phone: string;
   email: string;
-  employment_status: "unemployed" | "employed" | "improved" | "unknown";
   notes: string;
 };
 
 const EMPTY_FORM: StudentForm = {
-  expediente: "",
   first_names: "",
   last_names: "",
   dni_nie: "",
   social_security_number: "",
   birth_date: "",
-  age: "",
   sex: "unknown",
   district_code: "",
   municipality_code: "",
   phone: "",
   email: "",
-  employment_status: "unknown",
   notes: "",
 };
 
@@ -60,19 +55,16 @@ function parseCode(value: string) {
 
 function toForm(student: Student): StudentForm {
   return {
-    expediente: student.expediente || "",
     first_names: student.first_names || "",
     last_names: student.last_names || "",
     dni_nie: student.dni_nie || "",
     social_security_number: student.social_security_number || "",
     birth_date: student.birth_date ? String(student.birth_date).slice(0, 10) : "",
-    age: student.age != null ? String(student.age) : "",
     sex: (student.sex || "unknown") as StudentForm["sex"],
     district_code: student.district_code != null ? String(student.district_code) : "",
     municipality_code: student.municipality_code != null ? String(student.municipality_code) : "",
     phone: student.phone || "",
     email: student.email || "",
-    employment_status: (student.employment_status || "unknown") as StudentForm["employment_status"],
     notes: student.notes || "",
   };
 }
@@ -159,42 +151,31 @@ export default function StudentEditPage() {
 
   const canSave = useMemo(
     () =>
-      !!form.expediente.trim() &&
       !!form.first_names.trim() &&
       !!form.last_names.trim() &&
       !!form.dni_nie.trim(),
     [form]
   );
+  const calculatedAge = useMemo(() => calculateAgeFromBirthDate(form.birth_date), [form.birth_date]);
 
   const save = async () => {
     if (!canSave) return;
-    const ageValue = form.age.trim();
-    const parsedAge = ageValue ? Number.parseInt(ageValue, 10) : null;
-    if (ageValue) {
-      if (parsedAge === null || Number.isNaN(parsedAge) || parsedAge <= 0) {
-        setError("La edad debe ser un número válido.");
-        return;
-      }
-    }
 
     try {
       setError(null);
       setSaving(true);
 
       const payload = {
-        expediente: form.expediente.trim(),
         first_names: form.first_names.trim(),
         last_names: form.last_names.trim(),
         dni_nie: form.dni_nie.trim(),
         social_security_number: form.social_security_number.trim() || null,
         birth_date: form.birth_date || null,
-        age: parsedAge,
         sex: form.sex,
         district_code: parseCode(form.district_code),
         municipality_code: parseCode(form.municipality_code),
         phone: form.phone.trim() || null,
         email: form.email.trim() || null,
-        employment_status: form.employment_status,
         notes: form.notes.trim() || null,
       };
 
@@ -251,16 +232,6 @@ export default function StudentEditPage() {
           <Grid size={{ xs: 12, sm: 6, md: 4 }}>
             <TextField
               fullWidth
-              label="Nº EXPEDIENTE"
-              size="small"
-              required
-              value={form.expediente}
-              onChange={(e) => setForm((s) => ({ ...s, expediente: e.target.value }))}
-            />
-          </Grid>
-          <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-            <TextField
-              fullWidth
               label="NOMBRE"
               size="small"
               required
@@ -310,11 +281,10 @@ export default function StudentEditPage() {
           <Grid size={{ xs: 12, sm: 6, md: 4 }}>
             <TextField
               fullWidth
-              label="EDAD"
+              label="EDAD (CALCULADA)"
               size="small"
-              type="number"
-              value={form.age}
-              onChange={(e) => setForm((s) => ({ ...s, age: e.target.value }))}
+              value={calculatedAge != null ? String(calculatedAge) : ""}
+              InputProps={{ readOnly: true }}
             />
           </Grid>
           <Grid size={{ xs: 12, sm: 6, md: 4 }}>
@@ -396,26 +366,6 @@ export default function StudentEditPage() {
               value={form.email}
               onChange={(e) => setForm((s) => ({ ...s, email: e.target.value }))}
             />
-          </Grid>
-          <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-            <TextField
-              fullWidth
-              select
-              label="SITUACIÓN LABORAL"
-              size="small"
-              value={form.employment_status}
-              onChange={(e) =>
-                setForm((s) => ({
-                  ...s,
-                  employment_status: e.target.value as StudentForm["employment_status"],
-                }))
-              }
-            >
-              <MenuItem value="unknown">Desconocido</MenuItem>
-              <MenuItem value="unemployed">Desempleado</MenuItem>
-              <MenuItem value="employed">Empleado</MenuItem>
-              <MenuItem value="improved">Buscando mejor opción</MenuItem>
-            </TextField>
           </Grid>
           <Grid size={{ xs: 12 }}>
             <TextField

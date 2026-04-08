@@ -26,12 +26,11 @@ import type { LocationDistrict, LocationMunicipality, Student } from "../types";
 import DownloadIcon from "@mui/icons-material/Download";
 import { exportToCsv } from "../utils/CsvExporter";
 import type { CsvColumn } from "../utils/CsvExporter";
-import { formatDateDMY } from "../utils/date";
+import { calculateAgeFromBirthDate, formatDateDMY } from "../utils/date";
 import DateTextField from "../components/DateTextField";
 
 type StudentLite = {
   id: string;
-  expediente: string;
   nombres: string;
   apellidos: string;
   dniNie: string;
@@ -46,36 +45,30 @@ type StudentLite = {
 };
 
 type NewStudentForm = {
-  expediente: string;
   first_names: string;
   last_names: string;
   dni_nie: string;
   social_security_number: string;
   birth_date: string;
-  age: string;
   sex: "mujer" | "hombre" | "other" | "unknown";
   district_code: string;
   municipality_code: string;
   phone: string;
   email: string;
-  employment_status: "unemployed" | "employed" | "improved" | "unknown";
   notes: string;
 };
 
 const EMPTY_NEW_STUDENT_FORM: NewStudentForm = {
-  expediente: "",
   first_names: "",
   last_names: "",
   dni_nie: "",
   social_security_number: "",
   birth_date: "",
-  age: "",
   sex: "unknown",
   district_code: "",
   municipality_code: "",
   phone: "",
   email: "",
-  employment_status: "unknown",
   notes: "",
 };
 
@@ -186,38 +179,31 @@ export default function StudentsListPage() {
     setNewStudent(EMPTY_NEW_STUDENT_FORM);
   };
 
-  const saveNewStudent = async () => {
-    if (!newStudent.expediente.trim() || !newStudent.first_names.trim() || !newStudent.last_names.trim() || !newStudent.dni_nie.trim()) {
-      setCreateError("Expediente, nombres, apellidos y DNI/NIE/Pasaporte son obligatorios.");
-      return;
-    }
+  const calculatedNewStudentAge = React.useMemo(
+    () => calculateAgeFromBirthDate(newStudent.birth_date),
+    [newStudent.birth_date]
+  );
 
-    const ageValue = newStudent.age.trim();
-    const parsedAge = ageValue ? Number.parseInt(ageValue, 10) : null;
-    if (ageValue) {
-      if (parsedAge === null || Number.isNaN(parsedAge) || parsedAge <= 0) {
-        setCreateError("La edad debe ser un número válido.");
-        return;
-      }
+  const saveNewStudent = async () => {
+    if (!newStudent.first_names.trim() || !newStudent.last_names.trim() || !newStudent.dni_nie.trim()) {
+      setCreateError("Nombres, apellidos y DNI/NIE/Pasaporte son obligatorios.");
+      return;
     }
 
     try {
       setCreateError(null);
       setCreateSaving(true);
       const { data } = await api.post<{ studentId?: number }>("/students", {
-        expediente: newStudent.expediente.trim(),
         first_names: newStudent.first_names.trim(),
         last_names: newStudent.last_names.trim(),
         dni_nie: newStudent.dni_nie.trim(),
         social_security_number: newStudent.social_security_number.trim() || null,
         birth_date: newStudent.birth_date || null,
-        age: parsedAge,
         sex: newStudent.sex,
         district_code: parseCode(newStudent.district_code),
         municipality_code: parseCode(newStudent.municipality_code),
         phone: newStudent.phone.trim() || null,
         email: newStudent.email.trim() || null,
-        employment_status: newStudent.employment_status,
         notes: newStudent.notes.trim() || null,
       });
 
@@ -240,13 +226,13 @@ export default function StudentsListPage() {
   const rows = React.useMemo(() => {
     const hay = (v?: string) => (v || "").toLowerCase().includes(q.toLowerCase());
     const mapped: StudentLite[] = students.map((s) => {
+      const age = calculateAgeFromBirthDate(s.birth_date);
       return {
         id: String(s.id),
-        expediente: s.expediente || String(s.id),
         nombres: s.first_names,
         apellidos: s.last_names,
         dniNie: s.dni_nie,
-        edad: s.age != null ? String(s.age) : "",
+        edad: age != null ? String(age) : "",
         sexo: sexLabel(s.sex),
         nss: s.social_security_number ?? "",
         fechaNacimiento: formatDateDMY(s.birth_date, ""),
@@ -258,7 +244,6 @@ export default function StudentsListPage() {
     });
     return mapped.filter(
       (s) =>
-        hay(s.expediente) ||
         hay(s.nombres) ||
         hay(s.apellidos) ||
         hay(s.dniNie) ||
@@ -285,7 +270,6 @@ export default function StudentsListPage() {
 
   const onExport = React.useCallback(() => {
     const cols: CsvColumn<StudentLite>[] = [
-      { label: "Nº Expediente", value: (r) => r.expediente },
       { label: "Nombres", value: (r) => r.nombres },
       { label: "Apellidos", value: (r) => r.apellidos },
       { label: "DNI/NIE/Pasaporte", value: (r) => r.dniNie },
@@ -313,7 +297,7 @@ export default function StudentsListPage() {
             onChange={(e) => setQ(e.target.value)}
             size="small"
             label="Buscar"
-            placeholder="Expediente, nombres, apellidos, DNI/NIE/Pasaporte, edad, sexo, distrito, municipio, teléfono o email"
+            placeholder="Nombres, apellidos, DNI/NIE/Pasaporte, edad, sexo, distrito, municipio, teléfono o email"
           />
           <Button variant="outlined" size="small" startIcon={<DownloadIcon />} onClick={onExport}>
             Exportar CSV
@@ -325,7 +309,6 @@ export default function StudentsListPage() {
         <Table size="small">
           <TableHead>
             <TableRow>
-              <TableCell sx={{ whiteSpace: "nowrap" }}>Nº Exp.</TableCell>
               <TableCell sx={{ whiteSpace: "nowrap" }}>Nombres</TableCell>
               <TableCell sx={{ whiteSpace: "nowrap" }}>Apellidos</TableCell>
               <TableCell sx={{ whiteSpace: "nowrap" }}>DNI / NIE / Pasaporte</TableCell>
@@ -340,14 +323,14 @@ export default function StudentsListPage() {
           <TableBody>
             {loading && (
               <TableRow>
-                <TableCell colSpan={10} align="center">
+                <TableCell colSpan={9} align="center">
                   Cargando…
                 </TableCell>
               </TableRow>
             )}
             {!loading && error && (
               <TableRow>
-                <TableCell colSpan={10} align="center">
+                <TableCell colSpan={9} align="center">
                   Error: {error}
                 </TableCell>
               </TableRow>
@@ -364,7 +347,6 @@ export default function StudentsListPage() {
                     if (e.key === "Enter" || e.key === " ") navigate(`/students/${s.id}`);
                   }}
                 >
-                  <TableCell sx={{ whiteSpace: "nowrap" }}>{s.expediente}</TableCell>
                   <TableCell>{s.nombres}</TableCell>
                   <TableCell>{s.apellidos}</TableCell>
                   <TableCell sx={{ whiteSpace: "nowrap" }}>{s.dniNie}</TableCell>
@@ -378,7 +360,7 @@ export default function StudentsListPage() {
               ))}
             {!loading && !error && rows.length === 0 && (
               <TableRow>
-                <TableCell colSpan={10} align="center">
+                <TableCell colSpan={9} align="center">
                   No hay resultados
                 </TableCell>
               </TableRow>
@@ -408,14 +390,6 @@ export default function StudentsListPage() {
             {createError && <Alert severity="error">{createError}</Alert>}
 
             <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
-              <TextField
-                label="Nº Expediente"
-                size="small"
-                fullWidth
-                required
-                value={newStudent.expediente}
-                onChange={(e) => setNewStudent((s) => ({ ...s, expediente: e.target.value }))}
-              />
               <TextField
                 label="DNI / NIE / Pasaporte"
                 size="small"
@@ -455,12 +429,11 @@ export default function StudentsListPage() {
                 placeholder="dd/mm/aaaa"
               />
               <TextField
-                label="Edad"
+                label="Edad (calculada)"
                 size="small"
-                type="number"
                 fullWidth
-                value={newStudent.age}
-                onChange={(e) => setNewStudent((s) => ({ ...s, age: e.target.value }))}
+                value={calculatedNewStudentAge != null ? String(calculatedNewStudentAge) : ""}
+                InputProps={{ readOnly: true }}
               />
               <TextField
                 label="Sexo"
@@ -553,25 +526,6 @@ export default function StudentsListPage() {
             </Stack>
 
             <TextField
-              label="Situación laboral"
-              select
-              size="small"
-              fullWidth
-              value={newStudent.employment_status}
-              onChange={(e) =>
-                setNewStudent((s) => ({
-                  ...s,
-                  employment_status: e.target.value as NewStudentForm["employment_status"],
-                }))
-              }
-            >
-              <MenuItem value="unknown">Desconocido</MenuItem>
-              <MenuItem value="unemployed">Desempleado</MenuItem>
-              <MenuItem value="employed">Empleado</MenuItem>
-              <MenuItem value="improved">Buscando mejor opción</MenuItem>
-            </TextField>
-
-            <TextField
               label="Observaciones"
               size="small"
               fullWidth
@@ -591,7 +545,6 @@ export default function StudentsListPage() {
             onClick={saveNewStudent}
             disabled={
               createSaving ||
-              !newStudent.expediente.trim() ||
               !newStudent.first_names.trim() ||
               !newStudent.last_names.trim() ||
               !newStudent.dni_nie.trim()

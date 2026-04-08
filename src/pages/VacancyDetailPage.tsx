@@ -341,7 +341,7 @@ export default function VacancyDetailPage() {
                       <Chip size="small" label={`${score}%`} color={scoreColor(score)} />
                     </Stack>
                   }
-                  secondary={`Distrito: ${student.district ?? '-'} — Estado: ${student.employment_status}`}
+                  secondary={`Municipio: ${student.municipality ?? '-'} — Distrito: ${student.district ?? '-'}`}
                 />
               </ListItem>
             ))}

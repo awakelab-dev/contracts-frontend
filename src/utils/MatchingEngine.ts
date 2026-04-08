@@ -11,17 +11,14 @@ function normalize(input: string | null | undefined): string {
 }
 
 export function computeMatchingScore(student: Student, vacancy: Vacancy): number {
-  // Nota: course_code ya no está en students; los cursos van en student_courses.
-  // Por ahora: priorizamos disponibilidad (employment_status) y un pequeño bonus si hay datos completos.
-  const status = (student.employment_status || "").toLowerCase();
-  const availabilityMatch = status === "unemployed" ? 1 : 0;
 
   const hasDistrict = !!normalize(student.district || "");
+  const hasMunicipality = !!normalize(student.municipality || "");
   const hasSector = !!normalize(vacancy.sector || "");
-  const completenessBonus = hasDistrict && hasSector ? 10 : 0;
-
-  const score = Math.min(100, availabilityMatch ? 40 + completenessBonus : 0);
-  return score;
+  if (hasDistrict && hasSector) return 70;
+  if (hasMunicipality && hasSector) return 60;
+  if (hasSector) return 55;
+  return 0;
 }
 
 export function scoreColor(score: number): "success" | "warning" | "error" {

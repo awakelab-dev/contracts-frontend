@@ -82,3 +82,20 @@ export function normalizeUserDateToIso(input: string): string | null {
   if (!raw) return "";
   return toIsoDate(raw);
 }
+
+export function calculateAgeFromBirthDate(value: unknown): number | null {
+  const birth = toLocalDate(value);
+  if (!birth) return null;
+
+  const today = new Date();
+  const now = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  let age = now.getFullYear() - birth.getFullYear();
+  const monthDiff = now.getMonth() - birth.getMonth();
+
+  if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < birth.getDate())) {
+    age -= 1;
+  }
+
+  if (!Number.isFinite(age) || age < 0 || age > 130) return null;
+  return age;
+}
