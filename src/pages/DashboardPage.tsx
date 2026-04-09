@@ -47,7 +47,7 @@ type InterviewRow = {
   status?: "sent" | "attended" | "no_show" | null;
 };
 
-type PnlRow = {
+type PracticeRow = {
   id: number;
   start_date?: string;
 };
@@ -487,7 +487,7 @@ export default function DashboardPage() {
   const [vacancies, setVacancies] = useState<(Vacancy & { company_name?: string })[]>([]);
   const [invitations, setInvitations] = useState<InvitationRow[]>([]);
   const [interviews, setInterviews] = useState<InterviewRow[]>([]);
-  const [pnlRows, setPnlRows] = useState<PnlRow[]>([]);
+  const [practiceRows, setPracticeRows] = useState<PracticeRow[]>([]);
   const [contracts, setContracts] = useState<HiringContractRow[]>([]);
   const [liquidations, setLiquidations] = useState<LiquidationRow[]>([]);
   const [liqPreview, setLiqPreview] = useState<LiquidationPreview | null>(null);
@@ -502,14 +502,14 @@ export default function DashboardPage() {
 
         const end_date = fmtDate(new Date());
 
-        const [sumRes, sRes, cRes, vRes, invRes, intRes, pnlRes, hcRes, lRes] = await Promise.all([
+        const [sumRes, sRes, cRes, vRes, invRes, intRes, practicesRes, hcRes, lRes] = await Promise.all([
           api.get<StatsSummary>("/stats/summary"),
           api.get<Student[]>("/students"),
           api.get<Company[]>("/companies"),
           api.get<(Vacancy & { company_name?: string })[]>("/vacancies"),
           api.get<InvitationRow[]>("/invitations"),
           api.get<InterviewRow[]>("/interviews"),
-          api.get<PnlRow[]>("/pnl"),
+          api.get<PracticeRow[]>("/practices"),
           api.get<HiringContractRow[]>("/hiring-contracts"),
           api.get<LiquidationRow[]>("/liquidations"),
         ]);
@@ -532,7 +532,7 @@ export default function DashboardPage() {
         setVacancies(Array.isArray(vRes.data) ? vRes.data : []);
         setInvitations(Array.isArray(invRes.data) ? invRes.data : []);
         setInterviews(Array.isArray(intRes.data) ? intRes.data : []);
-        setPnlRows(Array.isArray(pnlRes.data) ? pnlRes.data : []);
+        setPracticeRows(Array.isArray(practicesRes.data) ? practicesRes.data : []);
         setContracts(Array.isArray(hcRes.data) ? hcRes.data : []);
         setLiquidations(Array.isArray(lRes.data) ? lRes.data : []);
         setLiqPreview(preview);
@@ -609,7 +609,10 @@ export default function DashboardPage() {
     () => countByMonth(last6MonthKeys, interviews, (i) => i.interview_date),
     [last6MonthKeys, interviews]
   );
-  const pnl6m = useMemo(() => countByMonth(last6MonthKeys, pnlRows, (p) => p.start_date), [last6MonthKeys, pnlRows]);
+  const practices6m = useMemo(
+    () => countByMonth(last6MonthKeys, practiceRows, (p) => p.start_date),
+    [last6MonthKeys, practiceRows]
+  );
   const contracts6m = useMemo(
     () => countByMonth(last6MonthKeys, contracts, (c) => c.start_date),
     [last6MonthKeys, contracts]
@@ -646,13 +649,13 @@ export default function DashboardPage() {
     [invitations6m, interviews6m]
   );
 
-  const seriesIntPnlContr = useMemo<AreaSeries[]>(
+  const seriesIntPracticeContr = useMemo<AreaSeries[]>(
     () => [
       { name: "Entrevistas", values: interviews6m, color: "#1976d2" },
-      { name: "PnL", values: pnl6m, color: "#ed6c02" },
+      { name: "Prácticas", values: practices6m, color: "#ed6c02" },
       { name: "Contrataciones", values: contracts6m, color: "#9c27b0" },
     ],
-    [interviews6m, pnl6m, contracts6m]
+    [interviews6m, practices6m, contracts6m]
   );
 
   const liqJornadasNow = liqPreview?.pool?.total_jornadas ?? 0;
@@ -722,11 +725,11 @@ export default function DashboardPage() {
             <Stack spacing={1}>
               <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
                 <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
-                  Entrevistas, PnL y Contrataciones (últimos 6 meses)
+                  Entrevistas, Prácticas y Contrataciones (últimos 6 meses)
                 </Typography>
-                <SeriesLegend series={seriesIntPnlContr} />
+                <SeriesLegend series={seriesIntPracticeContr} />
               </Stack>
-              <AreaLineChart labels={last6MonthLabels} series={seriesIntPnlContr} height={220} />
+              <AreaLineChart labels={last6MonthLabels} series={seriesIntPracticeContr} height={220} />
             </Stack>
           </Paper>
         </Grid>

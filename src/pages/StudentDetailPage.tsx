@@ -32,20 +32,16 @@ import { scoreColor } from "../utils/MatchingEngine";
 import { calculateAgeFromBirthDate, formatDateDMY } from "../utils/date";
 import DateTextField from "../components/DateTextField";
 
-type StudentCourse = {
-  id: number;
-  student_id: number;
-  title: string;
-  description?: string | null;
-  institution?: string | null;
-  start_date?: string | null;
-  end_date?: string | null;
-};
 type EnrolledItineraryCourse = {
   expediente: string;
   course_code: string;
   dni_nie: string;
+  leave_date?: string | null;
+  leave_reason?: string | null;
+  leave_notification?: string | null;
+  course_status?: string | null;
   itinerary_name: string;
+  formation_end_date?: string | null;
 };
 
 type InvitationRow = {
@@ -61,20 +57,27 @@ type InvitationRow = {
   company_name: string;
 };
 
-type PnlRow = {
+type PracticeRow = {
   id: number;
+  expediente: string;
   student_id: number;
-  company_nif: string;
-  company_name: string;
-  signer_name?: string | null;
-  signer_nif?: string | null;
+  course_code?: string | null;
+  itinerary_name?: string | null;
+  company_id?: number | null;
+  company_name?: string | null;
+  company_name_resolved?: string | null;
   workplace?: string | null;
-  position?: string | null;
-  start_date: string;
+  does_practices?: string | null;
+  conditions_for_practice?: string | null;
+  practice_shift?: string | null;
+  observations?: string | null;
+  start_date?: string | null;
   end_date?: string | null;
   schedule?: string | null;
-  weekly_hours?: number | null;
-  observations?: string | null;
+  attendance_days?: number | null;
+  evaluation?: string | null;
+  practice_status?: string | null;
+  leave_date?: string | null;
 };
 
 type HiringContractRow = {
@@ -98,6 +101,16 @@ type MatchingVacancyApiRow = Vacancy & {
   matched_topics_count: number;
 };
 
+type EnrolledCourseForm = {
+  expediente: string;
+  course_code: string;
+  itinerary_name: string;
+  course_status: "APTO" | "NO APTO" | "INSERCION";
+  leave_date: string;
+  leave_reason: "" | "ABANDONO" | "INSERCION" | "EXPULSION" | "ENFERMEDAD" | "OTROS";
+  leave_notification: "" | "NOTIFICADA" | "FIRMADA" | "EXPULSION";
+};
+
 const CONTRACT_TYPE_OPTIONS = ["Indefinido", "Duración Determinada", "Temporal"] as const;
 const WORKDAY_OPTIONS = ["Tiempo Completo", "Tiempo Parcial", "Fijo Discontínuo"] as const;
 const CONTRIBUTION_GROUP_OPTIONS = [
@@ -112,6 +125,30 @@ const CONTRIBUTION_GROUP_OPTIONS = [
   "OFICIALES DE TERCERA Y ESPECIALISTAS",
   "PEONES",
   "TRABAJADORES MENORES DE DIECIOCHO AÑOS, CUALQUIERA QUE SEA SU CATEGORÍA PROFESIONAL",
+] as const;
+const COURSE_STATUS_OPTIONS: Array<EnrolledCourseForm["course_status"]> = ["APTO", "NO APTO", "INSERCION"];
+const LEAVE_REASON_OPTIONS: Array<EnrolledCourseForm["leave_reason"]> = [
+  "",
+  "ABANDONO",
+  "INSERCION",
+  "EXPULSION",
+  "ENFERMEDAD",
+  "OTROS",
+];
+const LEAVE_NOTIFICATION_OPTIONS: Array<EnrolledCourseForm["leave_notification"]> = [
+  "",
+  "NOTIFICADA",
+  "FIRMADA",
+  "EXPULSION",
+];
+const PRACTICE_STATE_OPTIONS = ["SI", "NO", "INSERCION", "ACTUALIZAR"] as const;
+const PRACTICE_STATUS_OPTIONS = [
+  "",
+  "FINALIZADAS",
+  "INTERRUMPIDAS",
+  "NO REALIZA PRACTICAS",
+  "NO APTO FORMACION",
+  "INSERCION FORMACION",
 ] as const;
 
 type InvitationFormMode = "create" | "edit";
@@ -136,6 +173,31 @@ const EMPTY_CONTRACT_FORM = {
   weekly_hours: "",
   contributed_days: "",
   notes: "",
+};
+const EMPTY_PRACTICE_FORM = {
+  expediente: "",
+  company_name: "",
+  workplace: "",
+  does_practices: "NO" as (typeof PRACTICE_STATE_OPTIONS)[number],
+  conditions_for_practice: "",
+  practice_shift: "",
+  observations: "",
+  start_date: "",
+  end_date: "",
+  attendance_days: "",
+  schedule: "",
+  evaluation: "",
+  practice_status: "" as (typeof PRACTICE_STATUS_OPTIONS)[number],
+  leave_date: "",
+};
+const EMPTY_ENROLLED_COURSE_FORM: EnrolledCourseForm = {
+  expediente: "",
+  course_code: "",
+  itinerary_name: "",
+  course_status: "APTO",
+  leave_date: "",
+  leave_reason: "",
+  leave_notification: "",
 };
 
 function fmtDate(v: unknown): string {
@@ -165,6 +227,65 @@ function sexText(s: unknown): string {
     default:
       return "Desconocido";
   }
+}
+
+function courseStatusText(value: unknown): string {
+  const status = (value ?? "").toString().trim().toUpperCase();
+  if (!status || status === "APTO") return "APTO";
+  if (status === "NOAPTO" || status === "NO APTO") return "NO APTO";
+  if (status === "INSERCION") return "INSERCIÓN";
+  return status;
+}
+
+function leaveReasonText(value: unknown): string {
+  const reason = (value ?? "").toString().trim().toUpperCase();
+  if (!reason) return "-";
+  if (reason === "INSERCION") return "INSERCIÓN";
+  if (reason === "EXPULSION") return "EXPULSIÓN";
+  return reason;
+}
+
+function leaveNotificationText(value: unknown): string {
+  const notification = (value ?? "").toString().trim().toUpperCase();
+  if (!notification) return "-";
+  if (notification === "EXPULSION") return "EXPULSIÓN";
+  return notification;
+}
+
+function practiceStateText(value: unknown): string {
+  const state = (value ?? "").toString().trim().toUpperCase();
+  if (!state) return "-";
+  if (state === "INSERCION") return "INSERCIÓN";
+  return state;
+}
+
+function practiceStatusText(value: unknown): string {
+  const status = (value ?? "").toString().trim().toUpperCase();
+  if (!status) return "-";
+  if (status === "INSERCION FORMACION") return "INSERCIÓN FORMACIÓN";
+  return status;
+}
+
+function hasLeaveData(course: EnrolledItineraryCourse): boolean {
+  return Boolean(
+    (course.leave_date ?? "").toString().trim() ||
+      (course.leave_reason ?? "").toString().trim() ||
+      (course.leave_notification ?? "").toString().trim()
+  );
+}
+
+function leaveDataSummary(course: EnrolledItineraryCourse): string {
+  const parts: string[] = [];
+  if ((course.leave_date ?? "").toString().trim()) {
+    parts.push(`Fecha baja: ${formatDateDMY(course.leave_date)}`);
+  }
+  if ((course.leave_reason ?? "").toString().trim()) {
+    parts.push(`Motivo: ${leaveReasonText(course.leave_reason)}`);
+  }
+  if ((course.leave_notification ?? "").toString().trim()) {
+    parts.push(`Baja: ${leaveNotificationText(course.leave_notification)}`);
+  }
+  return parts.join(" · ");
 }
 
 function statusChip(s: InvitationRow["status"]) {
@@ -284,11 +405,10 @@ export default function StudentDetailPage() {
 
   const [recommended, setRecommended] = useState<Array<{ vacancy: Vacancy; score: number }>>([]);
 
-  const [courses, setCourses] = useState<StudentCourse[]>([]);
   const [enrolledCourses, setEnrolledCourses] = useState<EnrolledItineraryCourse[]>([]);
   const [interviews, setInterviews] = useState<Interview[]>([]);
   const [invitations, setInvitations] = useState<InvitationRow[]>([]);
-  const [pnlRows, setPnlRows] = useState<PnlRow[]>([]);
+  const [practiceRows, setPracticeRows] = useState<PracticeRow[]>([]);
   const [contracts, setContracts] = useState<HiringContractRow[]>([]);
 
   const [loading, setLoading] = useState(true);
@@ -321,25 +441,14 @@ export default function StudentDetailPage() {
   const [recommendedOpen, setRecommendedOpen] = useState(false);
   const [interviewsOpen, setInterviewsOpen] = useState(false);
   const [invitationsOpen, setInvitationsOpen] = useState(false);
-  const [pnlOpen, setPnlOpen] = useState(false);
+  const [practicesOpen, setPracticesOpen] = useState(false);
   const [contractsOpen, setContractsOpen] = useState(false);
 
-  // Courses form (create/update)
-  const [courseForm, setCourseForm] = useState<{
-    id?: number;
-    title: string;
-    description: string;
-    institution: string;
-    start_date: string;
-    end_date: string;
-  }>({
-    title: "",
-    description: "",
-    institution: "",
-    start_date: "",
-    end_date: "",
-  });
-  const [courseSaving, setCourseSaving] = useState(false);
+  // Enrolled itinerary form (update)
+  const [enrolledCourseForm, setEnrolledCourseForm] = useState<EnrolledCourseForm>(
+    EMPTY_ENROLLED_COURSE_FORM
+  );
+  const [enrolledCourseSaving, setEnrolledCourseSaving] = useState(false);
 
   // Interviews form
   const [interviewForm, setInterviewForm] = useState<{
@@ -368,34 +477,25 @@ export default function StudentDetailPage() {
   const [invitationSaving, setInvitationSaving] = useState(false);
   const [invitationNotify, setInvitationNotify] = useState({ email: false, whatsapp: false });
 
-  // PnL form
-  const [pnlForm, setPnlForm] = useState<{
+  // Practices form
+  const [practiceForm, setPracticeForm] = useState<{
     id?: number;
-    company_nif: string;
+    expediente: string;
     company_name: string;
-    signer_name: string;
-    signer_nif: string;
     workplace: string;
-    position: string;
+    does_practices: (typeof PRACTICE_STATE_OPTIONS)[number];
+    conditions_for_practice: string;
+    practice_shift: string;
+    observations: string;
     start_date: string;
     end_date: string;
+    attendance_days: string;
     schedule: string;
-    weekly_hours: string;
-    observations: string;
-  }>({
-    company_nif: "",
-    company_name: "",
-    signer_name: "",
-    signer_nif: "",
-    workplace: "",
-    position: "",
-    start_date: "",
-    end_date: "",
-    schedule: "",
-    weekly_hours: "",
-    observations: "",
-  });
-  const [pnlSaving, setPnlSaving] = useState(false);
+    evaluation: string;
+    practice_status: (typeof PRACTICE_STATUS_OPTIONS)[number];
+    leave_date: string;
+  }>({ ...EMPTY_PRACTICE_FORM });
+  const [practiceSaving, setPracticeSaving] = useState(false);
 
   // Hiring contracts form
   const [contractForm, setContractForm] = useState<{
@@ -436,14 +536,12 @@ export default function StudentDetailPage() {
     return m;
   }, [municipalityOptions]);
 
-
-  const lastCourses = useMemo(() => {
-    return [...courses]
-      .sort((a, b) => (fmtDate(b.end_date || b.start_date) || "").localeCompare(fmtDate(a.end_date || a.start_date) || ""))
-      .slice(0, 4);
-  }, [courses]);
   const itineraryCoursesSummary = useMemo(() => enrolledCourses.slice(0, 4), [enrolledCourses]);
-  const totalCoursesCount = courses.length + enrolledCourses.length;
+  const showLeaveColumns = useMemo(
+    () => enrolledCourses.some((course) => hasLeaveData(course)),
+    [enrolledCourses]
+  );
+  const totalCoursesCount = enrolledCourses.length;
 
   const recommendedTop2 = useMemo(() => recommended.slice(0, 2), [recommended]);
 
@@ -467,15 +565,15 @@ export default function StudentDetailPage() {
     [invitations]
   );
 
-  const pnlSorted = useMemo(() => {
-    return [...pnlRows].sort((a, b) => fmtDate(b.start_date).localeCompare(fmtDate(a.start_date)));
-  }, [pnlRows]);
+  const practiceSorted = useMemo(() => {
+    return [...practiceRows].sort((a, b) => fmtDate(b.start_date).localeCompare(fmtDate(a.start_date)));
+  }, [practiceRows]);
 
   const contractsSorted = useMemo(() => {
     return [...contracts].sort((a, b) => fmtDate(b.start_date).localeCompare(fmtDate(a.start_date)));
   }, [contracts]);
 
-  const pnlSummary = useMemo(() => pnlSorted.slice(0, 3), [pnlSorted]);
+  const practiceSummary = useMemo(() => practiceSorted.slice(0, 3), [practiceSorted]);
   const contractsSummary = useMemo(() => contractsSorted.slice(0, 3), [contractsSorted]);
 
   const interviewsChartSlices = useMemo<DonutSlice[]>(
@@ -497,15 +595,14 @@ export default function StudentDetailPage() {
 
   async function fetchAll(currentSid: string) {
     const n = Number(currentSid);
-    const [sRes, vRes, cRes, iRes, scRes, ecRes, invRes, pnlRes, hcRes, mRes] = await Promise.all([
+    const [sRes, vRes, cRes, iRes, ecRes, invRes, practicesRes, hcRes, mRes] = await Promise.all([
       api.get<Student>(`/students/${currentSid}`),
       api.get<Vacancy[]>(`/vacancies`),
       api.get<Company[]>(`/companies`),
       api.get<Interview[]>(`/interviews`, { params: { student_id: n } }),
-      api.get<StudentCourse[]>(`/student-courses`, { params: { student_id: n } }),
       api.get<EnrolledItineraryCourse[]>(`/students/${currentSid}/enrolled-courses`),
       api.get<InvitationRow[]>(`/invitations`, { params: { student_id: n } }),
-      api.get<PnlRow[]>(`/pnl`, { params: { student_id: n } }),
+      api.get<PracticeRow[]>(`/practices`, { params: { student_id: n } }),
       api.get<HiringContractRow[]>(`/hiring-contracts`, { params: { student_id: n } }),
       api.get<MatchingVacancyApiRow[]>(`/matching/vacancies`, { params: { studentId: n, limit: 500 } }),
     ]);
@@ -517,10 +614,9 @@ export default function StudentDetailPage() {
       vacancies: Array.isArray(vRes.data) ? vRes.data : [],
       companies: Array.isArray(cRes.data) ? cRes.data : [],
       interviews: Array.isArray(iRes.data) ? iRes.data : [],
-      courses: Array.isArray(scRes.data) ? scRes.data : [],
       enrolledCourses: Array.isArray(ecRes.data) ? ecRes.data : [],
       invitations: Array.isArray(invRes.data) ? invRes.data : [],
-      pnlRows: Array.isArray(pnlRes.data) ? pnlRes.data : [],
+      practiceRows: Array.isArray(practicesRes.data) ? practicesRes.data : [],
       contracts: Array.isArray(hcRes.data) ? hcRes.data : [],
       recommended: rec
         .map((v) => ({ vacancy: v, score: Number((v as any).score) }))
@@ -581,10 +677,9 @@ export default function StudentDetailPage() {
         setVacancies(data.vacancies);
         setCompanies(data.companies);
         setInterviews(data.interviews);
-        setCourses(data.courses);
         setEnrolledCourses(data.enrolledCourses);
         setInvitations(data.invitations);
-        setPnlRows(data.pnlRows);
+        setPracticeRows(data.practiceRows);
         setContracts(data.contracts);
         setRecommended(data.recommended);
       })
@@ -669,55 +764,57 @@ export default function StudentDetailPage() {
     }
   }
 
-  async function saveCourse() {
-    const n = Number(sid);
-    if (!Number.isFinite(n) || !courseForm.title.trim()) return;
-
-    try {
-      setCourseSaving(true);
-      if (courseForm.id) {
-        await api.put(`/student-courses/${courseForm.id}`, {
-          title: courseForm.title,
-          description: courseForm.description || null,
-          institution: courseForm.institution || null,
-          start_date: courseForm.start_date || null,
-          end_date: courseForm.end_date || null,
-        });
-      } else {
-        await api.post(`/student-courses`, {
-          student_id: n,
-          title: courseForm.title,
-          description: courseForm.description || null,
-          institution: courseForm.institution || null,
-          start_date: courseForm.start_date || null,
-          end_date: courseForm.end_date || null,
-        });
-      }
-
-      const { data } = await api.get<StudentCourse[]>(`/student-courses`, { params: { student_id: n } });
-      setCourses(Array.isArray(data) ? data : []);
-      setCourseForm({ title: "", description: "", institution: "", start_date: "", end_date: "" });
-    } catch (e: any) {
-      setActionError(e?.response?.data?.error || e?.message || "Error al guardar curso");
-    } finally {
-      setCourseSaving(false);
-    }
+  async function refreshEnrolledCourses() {
+    if (!sid) return;
+    const { data } = await api.get<EnrolledItineraryCourse[]>(`/students/${sid}/enrolled-courses`);
+    setEnrolledCourses(Array.isArray(data) ? data : []);
   }
 
-  async function deleteCourse(courseId: number) {
-    const n = Number(sid);
-    if (!Number.isFinite(n)) return;
+  function startEditEnrolledCourse(course: EnrolledItineraryCourse) {
+    setEnrolledCourseForm({
+      expediente: course.expediente,
+      course_code: course.course_code,
+      itinerary_name: course.itinerary_name ?? "",
+      course_status: (course.course_status === "NO APTO" || course.course_status === "INSERCION"
+        ? course.course_status
+        : "APTO") as EnrolledCourseForm["course_status"],
+      leave_date: fmtDate(course.leave_date),
+      leave_reason: (
+        (course.leave_reason ?? "").toString().trim().toUpperCase() as EnrolledCourseForm["leave_reason"]
+      ) || "",
+      leave_notification: (
+        (course.leave_notification ?? "")
+          .toString()
+          .trim()
+          .toUpperCase() as EnrolledCourseForm["leave_notification"]
+      ) || "",
+    });
+  }
 
+  function resetEnrolledCourseForm() {
+    setEnrolledCourseForm(EMPTY_ENROLLED_COURSE_FORM);
+  }
+
+  async function saveEnrolledCourse() {
+    if (!sid || !enrolledCourseForm.expediente) return;
     try {
-      await api.delete(`/student-courses/${courseId}`);
-      const { data } = await api.get<StudentCourse[]>(`/student-courses`, { params: { student_id: n } });
-      setCourses(Array.isArray(data) ? data : []);
-
-      if (courseForm.id === courseId) {
-        setCourseForm({ title: "", description: "", institution: "", start_date: "", end_date: "" });
-      }
+      setActionError(null);
+      setEnrolledCourseSaving(true);
+      await api.put(
+        `/students/${sid}/enrolled-courses/${encodeURIComponent(enrolledCourseForm.expediente)}`,
+        {
+          course_status: enrolledCourseForm.course_status,
+          leave_date: enrolledCourseForm.leave_date || null,
+          leave_reason: enrolledCourseForm.leave_reason || null,
+          leave_notification: enrolledCourseForm.leave_notification || null,
+        }
+      );
+      await refreshEnrolledCourses();
+      resetEnrolledCourseForm();
     } catch (e: any) {
-      setActionError(e?.response?.data?.error || e?.message || "Error al eliminar curso");
+      setActionError(e?.response?.data?.error || e?.message || "Error al guardar itinerario");
+    } finally {
+      setEnrolledCourseSaving(false);
     }
   }
 
@@ -742,11 +839,11 @@ export default function StudentDetailPage() {
     setInvitations(Array.isArray(data) ? data : []);
   }
 
-  async function refreshPnl() {
+  async function refreshPractices() {
     const n = Number(sid);
     if (!Number.isFinite(n)) return;
-    const { data } = await api.get<PnlRow[]>(`/pnl`, { params: { student_id: n } });
-    setPnlRows(Array.isArray(data) ? data : []);
+    const { data } = await api.get<PracticeRow[]>(`/practices`, { params: { student_id: n } });
+    setPracticeRows(Array.isArray(data) ? data : []);
   }
 
   async function refreshContracts() {
@@ -908,78 +1005,102 @@ export default function StudentDetailPage() {
     }
   }
 
-  async function savePnl() {
+  function startCreatePractice() {
+    setPracticeForm({
+      ...EMPTY_PRACTICE_FORM,
+      expediente: enrolledCourses[0]?.expediente ?? "",
+    });
+  }
+
+  function startEditPractice(p: PracticeRow) {
+    setPracticeForm({
+      id: p.id,
+      expediente: p.expediente ?? "",
+      company_name: p.company_name ?? "",
+      workplace: p.workplace ?? "",
+      does_practices:
+        (p.does_practices &&
+        (PRACTICE_STATE_OPTIONS as readonly string[]).includes(
+          p.does_practices.toString().trim().toUpperCase()
+        )
+          ? p.does_practices.toString().trim().toUpperCase()
+          : "NO") as (typeof PRACTICE_STATE_OPTIONS)[number],
+      conditions_for_practice: p.conditions_for_practice ?? "",
+      practice_shift: p.practice_shift ?? "",
+      observations: p.observations ?? "",
+      start_date: fmtDate(p.start_date),
+      end_date: fmtDate(p.end_date),
+      attendance_days: p.attendance_days != null ? String(p.attendance_days) : "",
+      schedule: p.schedule ?? "",
+      evaluation: p.evaluation ?? "",
+      practice_status:
+        (p.practice_status &&
+        (PRACTICE_STATUS_OPTIONS as readonly string[]).includes(
+          p.practice_status.toString().trim().toUpperCase()
+        )
+          ? p.practice_status.toString().trim().toUpperCase()
+          : "") as (typeof PRACTICE_STATUS_OPTIONS)[number],
+      leave_date: fmtDate(p.leave_date),
+    });
+  }
+
+  async function savePractice() {
     const n = Number(sid);
-    if (!Number.isFinite(n) || !pnlForm.company_nif.trim() || !pnlForm.company_name.trim() || !pnlForm.start_date) return;
+    if (!Number.isFinite(n) || !practiceForm.expediente.trim()) return;
 
     try {
       setActionError(null);
-      setPnlSaving(true);
+      setPracticeSaving(true);
 
       const payload = {
         student_id: n,
-        company_nif: pnlForm.company_nif,
-        company_name: pnlForm.company_name,
-        signer_name: pnlForm.signer_name || null,
-        signer_nif: pnlForm.signer_nif || null,
-        workplace: pnlForm.workplace || null,
-        position: pnlForm.position || null,
-        start_date: pnlForm.start_date,
-        end_date: pnlForm.end_date || null,
-        schedule: pnlForm.schedule || null,
-        weekly_hours: toIntOrNull(pnlForm.weekly_hours),
-        observations: pnlForm.observations || null,
+        expediente: practiceForm.expediente.trim().toUpperCase(),
+        company_name: practiceForm.company_name || null,
+        workplace: practiceForm.workplace || null,
+        does_practices: practiceForm.does_practices,
+        conditions_for_practice: practiceForm.conditions_for_practice || null,
+        practice_shift: practiceForm.practice_shift || null,
+        observations: practiceForm.observations || null,
+        start_date: practiceForm.start_date || null,
+        end_date: practiceForm.end_date || null,
+        attendance_days: toIntOrNull(practiceForm.attendance_days),
+        schedule: practiceForm.schedule || null,
+        evaluation: practiceForm.evaluation || null,
+        practice_status: practiceForm.practice_status || null,
+        leave_date: practiceForm.leave_date || null,
       };
 
-      if (pnlForm.id) {
-        await api.put(`/pnl/${pnlForm.id}`, payload);
+      if (practiceForm.id) {
+        await api.put(`/practices/${practiceForm.id}`, payload);
       } else {
-        await api.post(`/pnl`, payload);
+        await api.post(`/practices`, payload);
       }
 
-      await refreshPnl();
-      setPnlForm({
-        company_nif: "",
-        company_name: "",
-        signer_name: "",
-        signer_nif: "",
-        workplace: "",
-        position: "",
-        start_date: "",
-        end_date: "",
-        schedule: "",
-        weekly_hours: "",
-        observations: "",
+      await refreshPractices();
+      setPracticeForm({
+        ...EMPTY_PRACTICE_FORM,
+        expediente: practiceForm.expediente || enrolledCourses[0]?.expediente || "",
       });
     } catch (e: any) {
-      setActionError(e?.response?.data?.error || e?.message || "Error al guardar PnL");
+      setActionError(e?.response?.data?.error || e?.message || "Error al guardar práctica");
     } finally {
-      setPnlSaving(false);
+      setPracticeSaving(false);
     }
   }
 
-  async function deletePnl(pnlId: number) {
+  async function deletePractice(practiceId: number) {
     try {
       setActionError(null);
-      await api.delete(`/pnl/${pnlId}`);
-      await refreshPnl();
-      if (pnlForm.id === pnlId) {
-        setPnlForm({
-          company_nif: "",
-          company_name: "",
-          signer_name: "",
-          signer_nif: "",
-          workplace: "",
-          position: "",
-          start_date: "",
-          end_date: "",
-          schedule: "",
-          weekly_hours: "",
-          observations: "",
+      await api.delete(`/practices/${practiceId}`);
+      await refreshPractices();
+      if (practiceForm.id === practiceId) {
+        setPracticeForm({
+          ...EMPTY_PRACTICE_FORM,
+          expediente: enrolledCourses[0]?.expediente || "",
         });
       }
     } catch (e: any) {
-      setActionError(e?.response?.data?.error || e?.message || "Error al eliminar PnL");
+      setActionError(e?.response?.data?.error || e?.message || "Error al eliminar práctica");
     }
   }
 
@@ -1486,7 +1607,6 @@ export default function StudentDetailPage() {
                     </Button>
                   </Stack>
                   <Divider sx={{ mb: 1.5 }} />
-
                   <Stack spacing={1.5}>
                     <Stack direction="row" spacing={2} alignItems="center">
                       <DonutChart slices={invitationsChartSlices} size={76} thickness={12} />
@@ -1524,35 +1644,41 @@ export default function StudentDetailPage() {
               </Grid>
             </Grid>
 
-            {/* PnL + Contrataciones */}
+            {/* Prácticas + Contrataciones */}
             <Grid container spacing={2}>
               <Grid size={{ xs: 12, md: 6 }}>
                 <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, height: "100%" }}>
                   <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
                     <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                      PnL (Prácticas no Laborales) ({pnlRows.length})
+                      Prácticas no Laborales ({practiceRows.length})
                     </Typography>
-                    <Button size="small" variant="outlined" onClick={() => setPnlOpen(true)}>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() => {
+                        startCreatePractice();
+                        setPracticesOpen(true);
+                      }}
+                    >
                       Ver
                     </Button>
                   </Stack>
                   <Divider sx={{ mb: 1.5 }} />
-
-                  {pnlRows.length ? (
+                  {practiceRows.length ? (
                     <Stack spacing={1}>
-                      {pnlSummary.map((p) => (
+                      {practiceSummary.map((p) => (
                         <Box key={p.id}>
                           <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                            {p.company_name}
+                            {p.company_name || p.company_name_resolved || "-"}
                           </Typography>
                           <Typography variant="caption" color="text.secondary">
-                            {p.position ?? "-"} · {formatDateDMY(p.start_date)} → {formatDateDMY(p.end_date)}
+                            {`${p.expediente} · ${practiceStatusText(p.practice_status)} · ${formatDateDMY(p.start_date)} → ${formatDateDMY(p.end_date)}`}
                           </Typography>
                         </Box>
                       ))}
                     </Stack>
                   ) : (
-                    <Typography color="text.secondary">Sin PnL registrada</Typography>
+                    <Typography color="text.secondary">Sin prácticas registradas</Typography>
                   )}
                 </Paper>
               </Grid>
@@ -1600,7 +1726,7 @@ export default function StudentDetailPage() {
                 </Button>
               </Stack>
               <Divider sx={{ mb: 1.5 }} />
-              {lastCourses.length || itineraryCoursesSummary.length ? (
+              {itineraryCoursesSummary.length ? (
                 <Stack spacing={1.5}>
                   {itineraryCoursesSummary.length > 0 && (
                     <Stack spacing={1}>
@@ -1613,33 +1739,20 @@ export default function StudentDetailPage() {
                             {course.itinerary_name || course.course_code}
                           </Typography>
                           <Typography variant="caption" color="text.secondary">
-                            {`Código: ${course.course_code} · Expediente: ${course.expediente}`}
+                            {`Código: ${course.course_code} · Expediente: ${course.expediente} · Estado: ${courseStatusText(course.course_status)} · Fin formación: ${formatDateDMY(course.formation_end_date)}`}
                           </Typography>
-                        </Box>
-                      ))}
-                    </Stack>
-                  )}
-
-                  {lastCourses.length > 0 && (
-                    <Stack spacing={1}>
-                      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
-                        Cursos manuales
-                      </Typography>
-                      {lastCourses.map((c) => (
-                        <Box key={c.id}>
-                          <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                            {c.title}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            {(c.institution || "-") + " · " + formatDateDMY(c.start_date) + " → " + formatDateDMY(c.end_date)}
-                          </Typography>
+                          {hasLeaveData(course) && (
+                            <Typography variant="caption" color="text.secondary" display="block">
+                              {leaveDataSummary(course)}
+                            </Typography>
+                          )}
                         </Box>
                       ))}
                     </Stack>
                   )}
                 </Stack>
               ) : (
-                <Typography color="text.secondary">Sin cursos registrados</Typography>
+                <Typography color="text.secondary">Sin itinerarios matriculados</Typography>
               )}
             </Paper>
           </Stack>
@@ -1710,6 +1823,16 @@ export default function StudentDetailPage() {
                     <TableCell>Itinerario</TableCell>
                     <TableCell>Código curso</TableCell>
                     <TableCell>Expediente</TableCell>
+                    <TableCell>Estado</TableCell>
+                    <TableCell>Fecha fin formación</TableCell>
+                    {showLeaveColumns && (
+                      <>
+                        <TableCell>Fecha baja</TableCell>
+                        <TableCell>Motivo baja</TableCell>
+                        <TableCell>Baja notificada/firmada</TableCell>
+                      </>
+                    )}
+                    <TableCell align="right">Acciones</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -1718,11 +1841,25 @@ export default function StudentDetailPage() {
                       <TableCell>{course.itinerary_name || "-"}</TableCell>
                       <TableCell>{course.course_code}</TableCell>
                       <TableCell>{course.expediente}</TableCell>
+                      <TableCell>{courseStatusText(course.course_status)}</TableCell>
+                      <TableCell>{formatDateDMY(course.formation_end_date)}</TableCell>
+                      {showLeaveColumns && (
+                        <>
+                          <TableCell>{course.leave_date ? formatDateDMY(course.leave_date) : ""}</TableCell>
+                          <TableCell>{course.leave_reason ? leaveReasonText(course.leave_reason) : ""}</TableCell>
+                          <TableCell>{course.leave_notification ? leaveNotificationText(course.leave_notification) : ""}</TableCell>
+                        </>
+                      )}
+                      <TableCell align="right">
+                        <Button size="small" onClick={() => startEditEnrolledCourse(course)}>
+                          Editar
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   ))}
                   {enrolledCourses.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={3} align="center" sx={{ py: 3, color: "text.secondary" }}>
+                      <TableCell colSpan={showLeaveColumns ? 9 : 6} align="center" sx={{ py: 3, color: "text.secondary" }}>
                         Sin itinerarios matriculados
                       </TableCell>
                     </TableRow>
@@ -1732,135 +1869,133 @@ export default function StudentDetailPage() {
             </Paper>
             <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
               <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                {courseForm.id ? "Editar curso" : "Nuevo curso"}
+                {enrolledCourseForm.expediente ? "Editar itinerario" : "Selecciona un itinerario para editar"}
               </Typography>
-              <Grid container spacing={2}>
-                <Grid size={{ xs: 12, md: 6 }}>
-                  <TextField
-                    label="Título"
-                    size="small"
-                    fullWidth
-                    value={courseForm.title}
-                    onChange={(e) => setCourseForm((f) => ({ ...f, title: e.target.value }))}
-                  />
-                </Grid>
-                <Grid size={{ xs: 12, md: 6 }}>
-                  <TextField
-                    label="Institución"
-                    size="small"
-                    fullWidth
-                    value={courseForm.institution}
-                    onChange={(e) => setCourseForm((f) => ({ ...f, institution: e.target.value }))}
-                  />
-                </Grid>
-                <Grid size={{ xs: 12, md: 6 }}>
-                  <DateTextField
-                    label="Fecha inicio"
-                    size="small"
-                    fullWidth
-                    value={courseForm.start_date}
-                    onChange={(nextIso) => setCourseForm((f) => ({ ...f, start_date: nextIso }))}
-                    placeholder="dd/mm/aaaa"
-                  />
-                </Grid>
-                <Grid size={{ xs: 12, md: 6 }}>
-                  <DateTextField
-                    label="Fecha fin"
-                    size="small"
-                    fullWidth
-                    value={courseForm.end_date}
-                    onChange={(nextIso) => setCourseForm((f) => ({ ...f, end_date: nextIso }))}
-                    placeholder="dd/mm/aaaa"
-                  />
-                </Grid>
-                <Grid size={{ xs: 12 }}>
-                  <TextField
-                    label="Descripción"
-                    size="small"
-                    fullWidth
-                    multiline
-                    minRows={2}
-                    value={courseForm.description}
-                    onChange={(e) => setCourseForm((f) => ({ ...f, description: e.target.value }))}
-                  />
-                </Grid>
-                <Grid size={{ xs: 12 }}>
-                  <Stack direction="row" spacing={1} justifyContent="flex-end">
-                    <Button
-                      variant="outlined"
-                      onClick={() => setCourseForm({ title: "", description: "", institution: "", start_date: "", end_date: "" })}
-                      disabled={courseSaving}
+              {enrolledCourseForm.expediente ? (
+                <Grid container spacing={2}>
+                  <Grid size={{ xs: 12, md: 4 }}>
+                    <TextField
+                      label="Itinerario"
+                      size="small"
+                      fullWidth
+                      value={enrolledCourseForm.itinerary_name || "-"}
+                      InputProps={{ readOnly: true }}
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12, md: 4 }}>
+                    <TextField
+                      label="Código curso"
+                      size="small"
+                      fullWidth
+                      value={enrolledCourseForm.course_code}
+                      InputProps={{ readOnly: true }}
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12, md: 4 }}>
+                    <TextField
+                      label="Expediente"
+                      size="small"
+                      fullWidth
+                      value={enrolledCourseForm.expediente}
+                      InputProps={{ readOnly: true }}
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12, md: 4 }}>
+                    <TextField
+                      label="Estado"
+                      select
+                      size="small"
+                      fullWidth
+                      value={enrolledCourseForm.course_status}
+                      onChange={(e) => {
+                        const nextStatus = e.target.value as EnrolledCourseForm["course_status"];
+                        setEnrolledCourseForm((f) => ({
+                          ...f,
+                          course_status: nextStatus,
+                          leave_date: nextStatus === "APTO" ? "" : f.leave_date,
+                          leave_reason: nextStatus === "APTO" ? "" : f.leave_reason,
+                          leave_notification: nextStatus === "APTO" ? "" : f.leave_notification,
+                        }));
+                      }}
                     >
-                      Nuevo curso
-                    </Button>
-                    <Button variant="contained" onClick={saveCourse} disabled={courseSaving || !courseForm.title.trim()}>
-                      Guardar
-                    </Button>
-                  </Stack>
+                      {COURSE_STATUS_OPTIONS.map((option) => (
+                        <MenuItem key={option} value={option}>
+                          {courseStatusText(option)}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  </Grid>
+                  <Grid size={{ xs: 12, md: 4 }}>
+                    <DateTextField
+                      label="Fecha baja"
+                      size="small"
+                      fullWidth
+                      disabled={enrolledCourseForm.course_status === "APTO"}
+                      value={enrolledCourseForm.leave_date}
+                      onChange={(nextIso) => setEnrolledCourseForm((f) => ({ ...f, leave_date: nextIso }))}
+                      placeholder="dd/mm/aaaa"
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12, md: 4 }}>
+                    <TextField
+                      label="Motivo baja"
+                      select
+                      size="small"
+                      fullWidth
+                      disabled={enrolledCourseForm.course_status === "APTO"}
+                      value={enrolledCourseForm.leave_reason}
+                      onChange={(e) =>
+                        setEnrolledCourseForm((f) => ({
+                          ...f,
+                          leave_reason: e.target.value as EnrolledCourseForm["leave_reason"],
+                        }))
+                      }
+                    >
+                      {LEAVE_REASON_OPTIONS.map((option) => (
+                        <MenuItem key={option || "EMPTY"} value={option}>
+                          {option ? leaveReasonText(option) : "Sin motivo"}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  </Grid>
+                  <Grid size={{ xs: 12, md: 4 }}>
+                    <TextField
+                      label="Baja notificada/firmada"
+                      select
+                      size="small"
+                      fullWidth
+                      disabled={enrolledCourseForm.course_status === "APTO"}
+                      value={enrolledCourseForm.leave_notification}
+                      onChange={(e) =>
+                        setEnrolledCourseForm((f) => ({
+                          ...f,
+                          leave_notification: e.target.value as EnrolledCourseForm["leave_notification"],
+                        }))
+                      }
+                    >
+                      {LEAVE_NOTIFICATION_OPTIONS.map((option) => (
+                        <MenuItem key={option || "EMPTY"} value={option}>
+                          {option ? leaveNotificationText(option) : "Sin notificación"}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  </Grid>
+                  <Grid size={{ xs: 12 }}>
+                    <Stack direction="row" spacing={1} justifyContent="flex-end">
+                      <Button variant="outlined" onClick={resetEnrolledCourseForm} disabled={enrolledCourseSaving}>
+                        Cancelar
+                      </Button>
+                      <Button variant="contained" onClick={saveEnrolledCourse} disabled={enrolledCourseSaving}>
+                        Guardar cambios
+                      </Button>
+                    </Stack>
+                  </Grid>
                 </Grid>
-              </Grid>
-            </Paper>
-
-            <Paper variant="outlined" sx={{ borderRadius: 2, overflow: "hidden" }}>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Curso</TableCell>
-                    <TableCell>Institución</TableCell>
-                    <TableCell sx={{ whiteSpace: "nowrap" }}>Inicio</TableCell>
-                    <TableCell sx={{ whiteSpace: "nowrap" }}>Fin</TableCell>
-                    <TableCell align="right">Acciones</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {courses.map((c) => (
-                    <TableRow key={c.id} hover>
-                      <TableCell>
-                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                          {c.title}
-                        </Typography>
-                        {c.description && (
-                          <Typography variant="caption" color="text.secondary">
-                            {c.description}
-                          </Typography>
-                        )}
-                      </TableCell>
-                      <TableCell>{c.institution ?? "-"}</TableCell>
-                      <TableCell sx={{ whiteSpace: "nowrap" }}>{formatDateDMY(c.start_date)}</TableCell>
-                      <TableCell sx={{ whiteSpace: "nowrap" }}>{formatDateDMY(c.end_date)}</TableCell>
-                      <TableCell align="right">
-                        <Stack direction="row" spacing={1} justifyContent="flex-end">
-                          <Button
-                            size="small"
-                            onClick={() =>
-                              setCourseForm({
-                                id: c.id,
-                                title: c.title,
-                                description: c.description ?? "",
-                                institution: c.institution ?? "",
-                                start_date: fmtDate(c.start_date),
-                                end_date: fmtDate(c.end_date),
-                              })
-                            }
-                          >
-                            Editar
-                          </Button>
-                          <Button size="small" color="error" onClick={() => deleteCourse(c.id)}>
-                            Eliminar
-                          </Button>
-                        </Stack>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {courses.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={5} align="center" sx={{ py: 4, color: "text.secondary" }}>
-                        No hay cursos
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
+              ) : (
+                <Typography color="text.secondary">
+                  Selecciona un itinerario en la tabla para editar estado y datos de baja.
+                </Typography>
+              )}
             </Paper>
           </Stack>
         </DialogContent>
@@ -2214,76 +2349,103 @@ export default function StudentDetailPage() {
         </DialogActions>
       </Dialog>
 
-      {/* PnL: listado completo + CRUD */}
-      <Dialog open={pnlOpen} onClose={() => setPnlOpen(false)} fullWidth maxWidth="xl">
-        <DialogTitle>PnL (Prácticas no Laborales)</DialogTitle>
+      {/* Prácticas: listado completo + CRUD */}
+      <Dialog open={practicesOpen} onClose={() => setPracticesOpen(false)} fullWidth maxWidth="xl">
+        <DialogTitle>Prácticas no Laborales ({practiceRows.length})</DialogTitle>
         <DialogContent dividers>
           <Stack spacing={2}>
             <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
               <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                Total: {pnlRows.length}
+                Total: {practiceRows.length}
               </Typography>
             </Paper>
 
             <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
               <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                {pnlForm.id ? "Editar PnL" : "Nueva PnL"}
+                {practiceForm.id ? "Editar práctica" : "Nueva práctica"}
               </Typography>
               <Grid container spacing={2}>
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <TextField
+                    select
+                    label="Expediente"
+                    size="small"
+                    fullWidth
+                    value={practiceForm.expediente}
+                    onChange={(e) => setPracticeForm((f) => ({ ...f, expediente: e.target.value }))}
+                  >
+                    <MenuItem value="">
+                      <em>Selecciona expediente</em>
+                    </MenuItem>
+                    {enrolledCourses.map((c) => (
+                      <MenuItem key={c.expediente} value={c.expediente}>
+                        {`${c.expediente} · ${c.itinerary_name || c.course_code}`}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                </Grid>
+                <Grid size={{ xs: 12, md: 3 }}>
+                  <TextField
+                    select
+                    label="¿Hace prácticas?"
+                    size="small"
+                    fullWidth
+                    value={practiceForm.does_practices}
+                    onChange={(e) =>
+                      setPracticeForm((f) => ({
+                        ...f,
+                        does_practices: e.target.value as (typeof PRACTICE_STATE_OPTIONS)[number],
+                      }))
+                    }
+                  >
+                    {PRACTICE_STATE_OPTIONS.map((opt) => (
+                      <MenuItem key={opt} value={opt}>
+                        {practiceStateText(opt)}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                </Grid>
+                <Grid size={{ xs: 12, md: 3 }}>
+                  <TextField
+                    select
+                    label="Estado prácticas"
+                    size="small"
+                    fullWidth
+                    value={practiceForm.practice_status}
+                    onChange={(e) =>
+                      setPracticeForm((f) => ({
+                        ...f,
+                        practice_status: e.target.value as (typeof PRACTICE_STATUS_OPTIONS)[number],
+                      }))
+                    }
+                  >
+                    <MenuItem value="">
+                      <em>—</em>
+                    </MenuItem>
+                    {PRACTICE_STATUS_OPTIONS.filter(Boolean).map((opt) => (
+                      <MenuItem key={opt} value={opt}>
+                        {practiceStatusText(opt)}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                </Grid>
+
                 <Grid size={{ xs: 12, md: 6 }}>
                   <TextField
                     label="Empresa"
                     size="small"
                     fullWidth
-                    value={pnlForm.company_name}
-                    onChange={(e) => setPnlForm((f) => ({ ...f, company_name: e.target.value }))}
+                    value={practiceForm.company_name}
+                    onChange={(e) => setPracticeForm((f) => ({ ...f, company_name: e.target.value }))}
                   />
                 </Grid>
                 <Grid size={{ xs: 12, md: 6 }}>
                   <TextField
-                    label="NIF empresa"
+                    label="Centro de prácticas"
                     size="small"
                     fullWidth
-                    value={pnlForm.company_nif}
-                    onChange={(e) => setPnlForm((f) => ({ ...f, company_nif: e.target.value }))}
-                  />
-                </Grid>
-
-                <Grid size={{ xs: 12, md: 6 }}>
-                  <TextField
-                    label="Firmante"
-                    size="small"
-                    fullWidth
-                    value={pnlForm.signer_name}
-                    onChange={(e) => setPnlForm((f) => ({ ...f, signer_name: e.target.value }))}
-                  />
-                </Grid>
-                <Grid size={{ xs: 12, md: 6 }}>
-                  <TextField
-                    label="NIF firmante"
-                    size="small"
-                    fullWidth
-                    value={pnlForm.signer_nif}
-                    onChange={(e) => setPnlForm((f) => ({ ...f, signer_nif: e.target.value }))}
-                  />
-                </Grid>
-
-                <Grid size={{ xs: 12, md: 6 }}>
-                  <TextField
-                    label="Centro"
-                    size="small"
-                    fullWidth
-                    value={pnlForm.workplace}
-                    onChange={(e) => setPnlForm((f) => ({ ...f, workplace: e.target.value }))}
-                  />
-                </Grid>
-                <Grid size={{ xs: 12, md: 6 }}>
-                  <TextField
-                    label="Puesto"
-                    size="small"
-                    fullWidth
-                    value={pnlForm.position}
-                    onChange={(e) => setPnlForm((f) => ({ ...f, position: e.target.value }))}
+                    value={practiceForm.workplace}
+                    onChange={(e) => setPracticeForm((f) => ({ ...f, workplace: e.target.value }))}
                   />
                 </Grid>
 
@@ -2292,8 +2454,8 @@ export default function StudentDetailPage() {
                     label="Inicio"
                     size="small"
                     fullWidth
-                    value={pnlForm.start_date}
-                    onChange={(nextIso) => setPnlForm((f) => ({ ...f, start_date: nextIso }))}
+                    value={practiceForm.start_date}
+                    onChange={(nextIso) => setPracticeForm((f) => ({ ...f, start_date: nextIso }))}
                     placeholder="dd/mm/aaaa"
                   />
                 </Grid>
@@ -2302,72 +2464,93 @@ export default function StudentDetailPage() {
                     label="Fin"
                     size="small"
                     fullWidth
-                    value={pnlForm.end_date}
-                    onChange={(nextIso) => setPnlForm((f) => ({ ...f, end_date: nextIso }))}
+                    value={practiceForm.end_date}
+                    onChange={(nextIso) => setPracticeForm((f) => ({ ...f, end_date: nextIso }))}
                     placeholder="dd/mm/aaaa"
                   />
                 </Grid>
-                <Grid size={{ xs: 12, md: 2 }}>
+                <Grid size={{ xs: 12, md: 4 }}>
+                  <DateTextField
+                    label="Fecha baja"
+                    size="small"
+                    fullWidth
+                    value={practiceForm.leave_date}
+                    onChange={(nextIso) => setPracticeForm((f) => ({ ...f, leave_date: nextIso }))}
+                    placeholder="dd/mm/aaaa"
+                  />
+                </Grid>
+
+                <Grid size={{ xs: 12, md: 4 }}>
                   <TextField
-                    label="Horas/sem"
+                    label="Nº días asistencia"
                     type="number"
                     size="small"
                     fullWidth
-                    value={pnlForm.weekly_hours}
-                    onChange={(e) => setPnlForm((f) => ({ ...f, weekly_hours: e.target.value }))}
+                    value={practiceForm.attendance_days}
+                    onChange={(e) => setPracticeForm((f) => ({ ...f, attendance_days: e.target.value }))}
                   />
                 </Grid>
-                <Grid size={{ xs: 12, md: 2 }}>
+                <Grid size={{ xs: 12, md: 4 }}>
                   <TextField
-                    label="Horario"
+                    label="Turno"
                     size="small"
                     fullWidth
-                    value={pnlForm.schedule}
-                    onChange={(e) => setPnlForm((f) => ({ ...f, schedule: e.target.value }))}
+                    value={practiceForm.practice_shift}
+                    onChange={(e) => setPracticeForm((f) => ({ ...f, practice_shift: e.target.value }))}
+                  />
+                </Grid>
+                <Grid size={{ xs: 12, md: 4 }}>
+                  <TextField
+                    label="Condiciones"
+                    size="small"
+                    fullWidth
+                    value={practiceForm.conditions_for_practice}
+                    onChange={(e) => setPracticeForm((f) => ({ ...f, conditions_for_practice: e.target.value }))}
                   />
                 </Grid>
 
                 <Grid size={{ xs: 12 }}>
+                  <TextField
+                    label="Horario"
+                    size="small"
+                    fullWidth
+                    value={practiceForm.schedule}
+                    onChange={(e) => setPracticeForm((f) => ({ ...f, schedule: e.target.value }))}
+                  />
+                </Grid>
+
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <TextField
+                    label="Valoración prácticas"
+                    size="small"
+                    fullWidth
+                    multiline
+                    minRows={2}
+                    value={practiceForm.evaluation}
+                    onChange={(e) => setPracticeForm((f) => ({ ...f, evaluation: e.target.value }))}
+                  />
+                </Grid>
+                <Grid size={{ xs: 12, md: 6 }}>
                   <TextField
                     label="Observaciones"
                     size="small"
                     fullWidth
                     multiline
                     minRows={2}
-                    value={pnlForm.observations}
-                    onChange={(e) => setPnlForm((f) => ({ ...f, observations: e.target.value }))}
+                    value={practiceForm.observations}
+                    onChange={(e) => setPracticeForm((f) => ({ ...f, observations: e.target.value }))}
                   />
                 </Grid>
 
                 <Grid size={{ xs: 12 }}>
                   <Stack direction="row" spacing={1} justifyContent="flex-end">
-                    <Button
-                      variant="outlined"
-                      disabled={pnlSaving}
-                      onClick={() =>
-                        setPnlForm({
-                          company_nif: "",
-                          company_name: "",
-                          signer_name: "",
-                          signer_nif: "",
-                          workplace: "",
-                          position: "",
-                          start_date: "",
-                          end_date: "",
-                          schedule: "",
-                          weekly_hours: "",
-                          observations: "",
-                        })
-                      }
-                    >
-                      Nueva PnL
+                    <Button variant="outlined" disabled={practiceSaving} onClick={startCreatePractice}>
+                      Nueva práctica
                     </Button>
                     <Button
                       variant="contained"
-                      disabled={
-                        pnlSaving || !pnlForm.company_nif.trim() || !pnlForm.company_name.trim() || !pnlForm.start_date
-                      }
-                      onClick={savePnl}
+                      disabled={practiceSaving || !practiceForm.expediente.trim()}
+                      onClick={savePractice}
                     >
                       Guardar
                     </Button>
@@ -2378,87 +2561,59 @@ export default function StudentDetailPage() {
 
             <Paper variant="outlined" sx={{ borderRadius: 2 }}>
               <Box sx={{ overflowX: "auto" }}>
-                <Table size="small" sx={{ minWidth: 1500 }}>
+                <Table size="small" sx={{ minWidth: 1700 }}>
                   <TableHead>
                     <TableRow>
+                      <TableCell>Expediente</TableCell>
+                      <TableCell>Itinerario</TableCell>
                       <TableCell>Empresa</TableCell>
-                      <TableCell>Firmante</TableCell>
-                      <TableCell>Centro</TableCell>
-                      <TableCell>Puesto</TableCell>
+                      <TableCell>Estado</TableCell>
+                      <TableCell>Hace prácticas</TableCell>
                       <TableCell sx={{ whiteSpace: "nowrap" }}>Inicio</TableCell>
                       <TableCell sx={{ whiteSpace: "nowrap" }}>Fin</TableCell>
-                      <TableCell>Horario</TableCell>
-                      <TableCell>Horas/sem</TableCell>
-                      <TableCell>Observaciones</TableCell>
+                      <TableCell sx={{ whiteSpace: "nowrap" }}>Baja</TableCell>
+                      <TableCell>Días</TableCell>
+                      <TableCell>Centro</TableCell>
                       <TableCell align="right">Acciones</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {pnlSorted.map((p) => (
+                    {practiceSorted.map((p) => (
                       <TableRow key={p.id} hover>
+                        <TableCell>{p.expediente}</TableCell>
+                        <TableCell>{p.itinerary_name || p.course_code || "-"}</TableCell>
                         <TableCell>
                           <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                            {p.company_name}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            {p.company_nif}
+                            {p.company_name || p.company_name_resolved || "-"}
                           </Typography>
                         </TableCell>
-                        <TableCell>
-                          <Typography variant="body2">{p.signer_name ?? "-"}</Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            {p.signer_nif ?? ""}
-                          </Typography>
-                        </TableCell>
-                        <TableCell>{p.workplace ?? "-"}</TableCell>
-                        <TableCell>{p.position ?? "-"}</TableCell>
+                        <TableCell>{practiceStatusText(p.practice_status)}</TableCell>
+                        <TableCell>{practiceStateText(p.does_practices)}</TableCell>
                         <TableCell sx={{ whiteSpace: "nowrap" }}>{formatDateDMY(p.start_date)}</TableCell>
                         <TableCell sx={{ whiteSpace: "nowrap" }}>{formatDateDMY(p.end_date)}</TableCell>
-                        <TableCell>
-                          <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: "pre-line" }}>
-                            {p.schedule ?? ""}
-                          </Typography>
-                        </TableCell>
-                        <TableCell>{p.weekly_hours ?? "-"}</TableCell>
+                        <TableCell sx={{ whiteSpace: "nowrap" }}>{formatDateDMY(p.leave_date)}</TableCell>
+                        <TableCell>{p.attendance_days ?? "-"}</TableCell>
                         <TableCell>
                           <Typography variant="caption" color="text.secondary">
-                            {p.observations ?? ""}
+                            {p.workplace ?? "-"}
                           </Typography>
                         </TableCell>
                         <TableCell align="right">
                           <Stack direction="row" spacing={1} justifyContent="flex-end">
-                            <Button
-                              size="small"
-                              onClick={() =>
-                                setPnlForm({
-                                  id: p.id,
-                                  company_nif: p.company_nif,
-                                  company_name: p.company_name,
-                                  signer_name: p.signer_name ?? "",
-                                  signer_nif: p.signer_nif ?? "",
-                                  workplace: p.workplace ?? "",
-                                  position: p.position ?? "",
-                                  start_date: fmtDate(p.start_date),
-                                  end_date: fmtDate(p.end_date),
-                                  schedule: p.schedule ?? "",
-                                  weekly_hours: p.weekly_hours != null ? String(p.weekly_hours) : "",
-                                  observations: p.observations ?? "",
-                                })
-                              }
-                            >
+                            <Button size="small" onClick={() => startEditPractice(p)}>
                               Editar
                             </Button>
-                            <Button size="small" color="error" onClick={() => deletePnl(p.id)}>
+                            <Button size="small" color="error" onClick={() => deletePractice(p.id)}>
                               Eliminar
                             </Button>
                           </Stack>
                         </TableCell>
                       </TableRow>
                     ))}
-                    {pnlRows.length === 0 && (
+                    {practiceRows.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={10} align="center" sx={{ py: 4, color: "text.secondary" }}>
-                          No hay PnL
+                        <TableCell colSpan={11} align="center" sx={{ py: 4, color: "text.secondary" }}>
+                          No hay prácticas
                         </TableCell>
                       </TableRow>
                     )}
@@ -2469,7 +2624,7 @@ export default function StudentDetailPage() {
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setPnlOpen(false)}>Cerrar</Button>
+          <Button onClick={() => setPracticesOpen(false)}>Cerrar</Button>
         </DialogActions>
       </Dialog>
 

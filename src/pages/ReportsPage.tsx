@@ -26,7 +26,7 @@ type ReportData = {
   insercionLaboral: number; // %
   porcentajeEmpleoAntes3Meses: number; // %
   tiempoPromedioBusqueda: number | null; // días
-  alumnosFinalizanPNL: number;
+  alumnosFinalizanPracticas: number;
 };
 
 type ReportMeta = {
@@ -381,7 +381,7 @@ export default function ReportsPage() {
         <Grid container spacing={2} sx={{ mb: 2 }}>
           <Grid size={{ xs: 12, sm: 6, md: 3 }}>
             <KpiCard
-              label="Acceden a PnL"
+              label="Acceden a prácticas"
               value={fmtInt(data?.alumnosAccedenPracticas)}
               loading={loading}
             />
@@ -437,8 +437,8 @@ export default function ReportsPage() {
               />
               <Divider />
               <MetricRow
-                label="Alumnos que finalizan prácticas (PnL)"
-                value={fmtInt(data?.alumnosFinalizanPNL)}
+                label="Alumnos que finalizan prácticas"
+                value={fmtInt(data?.alumnosFinalizanPracticas)}
                 loading={loading}
               />
             </Paper>
