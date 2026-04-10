@@ -19,12 +19,13 @@ import { Link as RouterLink } from "react-router-dom";
 import api from "../lib/api";
 import { useEffect, useMemo, useState } from "react";
 import type { Company, Student, Vacancy } from "../types";
-import SchoolIcon from "@mui/icons-material/School";
-import BusinessIcon from "@mui/icons-material/Business";
-import WorkIcon from "@mui/icons-material/Work";
 import InsightsIcon from "@mui/icons-material/Insights";
 import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
 import { formatDateDMY } from "../utils/date";
+import iconAlumnos from "../assets/icons/alumnos.svg";
+import iconEmpresas from "../assets/icons/empresas.svg";
+import iconEntrevistas from "../assets/icons/entrevistas.svg";
+import iconVacantes from "../assets/icons/vacantes.svg";
 
 type StatsSummary = {
   total_students: number;
@@ -239,6 +240,22 @@ function AreaLineChart({ labels, series, height = 220 }: { labels: string[]; ser
   );
 }
 
+function DashboardStatIcon({ src, alt }: { src: string; alt: string }) {
+  return (
+    <Box
+      component="img"
+      src={src}
+      alt={alt}
+      sx={{
+        width: 56,
+        height: 56,
+        display: "block",
+        objectFit: "contain",
+      }}
+    />
+  );
+}
+
 function BarChart({
   labels,
   values,
@@ -416,7 +433,7 @@ function DonutCard({
   titleAlign?: "left" | "right";
 }) {
   return (
-    <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, height: "100%" }}>
+    <Paper variant="outlined" sx={{ p: 2, borderRadius: 1, height: "100%" }}>
       <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1, textAlign: titleAlign }}>
         {title}
       </Typography>
@@ -458,16 +475,35 @@ function KpiCard({
   color?: "primary" | "success" | "warning" | "info";
 }) {
   return (
-    <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, height: "100%" }}>
-      <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.75 }}>
-        <Box sx={{ color: (t) => (color ? t.palette[color].main : t.palette.text.secondary) }}>{icon}</Box>
-        <Typography variant="body2" color="text.secondary">
+    <Paper variant="outlined" sx={{ p: 2, borderRadius: 1, height: "100%" }}>
+      <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.35 }}>
+        <Box
+          sx={{
+            color: (t) => (color ? t.palette[color].main : t.palette.text.secondary),
+            display: "flex",
+            alignItems: "center",
+            flexShrink: 0,
+          }}
+        >
+          {icon}
+        </Box>
+        <Typography
+          color="text.secondary"
+          noWrap
+          sx={{
+            fontSize: 14,
+            lineHeight: 1.15,
+            textTransform: "uppercase",
+            flex: 1,
+            minWidth: 0,
+          }}
+        >
           {title}
         </Typography>
+        <Typography variant="h5" sx={{ fontWeight: 900, lineHeight: 1.1, flexShrink: 0 }}>
+          {value}
+        </Typography>
       </Stack>
-      <Typography variant="h5" sx={{ fontWeight: 900, lineHeight: 1.1 }}>
-        {value}
-      </Typography>
       {caption ? (
         <Typography variant="caption" color="text.secondary">
           {caption}
@@ -662,11 +698,15 @@ export default function DashboardPage() {
 
   return (
     <Box>
-      <Stack direction={{ xs: "column", md: "row" }} spacing={1} alignItems={{ xs: "flex-start", md: "center" }} justifyContent="space-between" mb={2}>
-        <Typography variant="h5" sx={{ fontWeight: 900 }}>
-          Inicio
-        </Typography>
-        <Stack direction="row" spacing={1}>
+      <Stack
+        direction={{ xs: "column", md: "row" }}
+        spacing={1}
+        alignItems={{ xs: "flex-start", md: "center" }}
+        justifyContent="flex-end"
+        mb={2}
+        mt={{ xs: 0.8, md: 1 }}
+      >
+        <Stack direction="row" spacing={1} sx={{ ml: { md: "auto" } }}>
           <Button component={RouterLink} to="/liquidacion" variant="contained" startIcon={<ReceiptLongIcon />}>
             Liquidación
           </Button>
@@ -686,19 +726,29 @@ export default function DashboardPage() {
 
       <Grid container spacing={2} sx={{ mb: 2 }}>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <KpiCard title="Alumnos" value={summary?.total_students ?? students.length} icon={<SchoolIcon />} color="primary" />
+          <KpiCard
+            title="Alumnos"
+            value={summary?.total_students ?? students.length}
+            icon={<DashboardStatIcon src={iconAlumnos} alt="Alumnos" />}
+            color="primary"
+          />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <KpiCard title="Empresas" value={companies.length} icon={<BusinessIcon />} color="info" />
+          <KpiCard title="Empresas" value={companies.length} icon={<DashboardStatIcon src={iconEmpresas} alt="Empresas" />} color="info" />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <KpiCard title="Vacantes abiertas" value={vacancyCounts.open} icon={<WorkIcon />} color="success" />
+          <KpiCard
+            title="Vacantes abiertas"
+            value={vacancyCounts.open}
+            icon={<DashboardStatIcon src={iconVacantes} alt="Vacantes" />}
+            color="success"
+          />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <KpiCard
             title="Jornadas (6 meses) disponibles"
             value={liqJornadasNow}
-            icon={<ReceiptLongIcon />}
+            icon={<DashboardStatIcon src={iconEntrevistas} alt="Jornadas" />}
             color={liqJornadasNow ? "success" : "warning"}
             caption={liqPreview ? `Remanente: ${liqPreview.pool.total_remainder_fte_days.toFixed(2)} días` : "(sin datos)"}
           />
@@ -707,7 +757,7 @@ export default function DashboardPage() {
 
       <Grid container spacing={2} sx={{ mb: 2 }}>
         <Grid size={{ xs: 12, md: 6 }}>
-          <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, height: "100%" }}>
+          <Paper variant="outlined" sx={{ p: 2, borderRadius: 1, height: "100%" }}>
             <Stack spacing={1}>
               <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
                 <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
@@ -721,7 +771,7 @@ export default function DashboardPage() {
         </Grid>
 
         <Grid size={{ xs: 12, md: 6 }}>
-          <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, height: "100%" }}>
+          <Paper variant="outlined" sx={{ p: 2, borderRadius: 1, height: "100%" }}>
             <Stack spacing={1}>
               <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
                 <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
@@ -735,7 +785,7 @@ export default function DashboardPage() {
         </Grid>
 
         <Grid size={{ xs: 12, md: 6 }}>
-          <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, height: "100%" }}>
+          <Paper variant="outlined" sx={{ p: 2, borderRadius: 1, height: "100%" }}>
             <Stack spacing={1}>
               <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
                 Laboral (incorporaciones) (últimos 12 meses)
@@ -746,7 +796,7 @@ export default function DashboardPage() {
         </Grid>
 
         <Grid size={{ xs: 12, md: 6 }}>
-          <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, height: "100%" }}>
+          <Paper variant="outlined" sx={{ p: 2, borderRadius: 1, height: "100%" }}>
             <Stack spacing={1}>
               <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
                 Inserción Laboral (últimos 12 meses)
@@ -794,7 +844,7 @@ export default function DashboardPage() {
 
       <Grid container spacing={2}>
         <Grid size={{ xs: 12, md: 6 }}>
-          <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, height: "100%" }}>
+          <Paper variant="outlined" sx={{ p: 2, borderRadius: 1, height: "100%" }}>
             <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
               <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
                 Top empresas (contrataciones)
@@ -824,7 +874,7 @@ export default function DashboardPage() {
         </Grid>
 
         <Grid size={{ xs: 12, md: 6 }}>
-          <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, height: "100%" }}>
+          <Paper variant="outlined" sx={{ p: 2, borderRadius: 1, height: "100%" }}>
             <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
               <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
                 Últimas liquidaciones
@@ -869,7 +919,7 @@ export default function DashboardPage() {
       </Grid>
 
       {summary && (
-        <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, mt: 2 }}>
+        <Paper variant="outlined" sx={{ p: 2, borderRadius: 1, mt: 2 }}>
           <Typography variant="caption" color="text.secondary">
             CVs faltantes: {summary.missing_cvs} · Vacantes abiertas: {summary.open_vacancies ?? vacancyCounts.open} · Empleados/mejor opción: {summary.employed_or_improved}
           </Typography>

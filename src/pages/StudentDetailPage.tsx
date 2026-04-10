@@ -41,7 +41,11 @@ type EnrolledItineraryCourse = {
   leave_notification?: string | null;
   course_status?: string | null;
   itinerary_name: string;
+  formation_start_date?: string | null;
   formation_end_date?: string | null;
+  formation_schedule?: string | null;
+  company?: string | null;
+  teacher?: string | null;
 };
 
 type InvitationRow = {
@@ -105,6 +109,11 @@ type EnrolledCourseForm = {
   expediente: string;
   course_code: string;
   itinerary_name: string;
+  formation_start_date: string;
+  formation_end_date: string;
+  formation_schedule: string;
+  company: string;
+  teacher: string;
   course_status: "APTO" | "NO APTO" | "INSERCION";
   leave_date: string;
   leave_reason: "" | "ABANDONO" | "INSERCION" | "EXPULSION" | "ENFERMEDAD" | "OTROS";
@@ -194,6 +203,11 @@ const EMPTY_ENROLLED_COURSE_FORM: EnrolledCourseForm = {
   expediente: "",
   course_code: "",
   itinerary_name: "",
+  formation_start_date: "",
+  formation_end_date: "",
+  formation_schedule: "",
+  company: "",
+  teacher: "",
   course_status: "APTO",
   leave_date: "",
   leave_reason: "",
@@ -537,10 +551,6 @@ export default function StudentDetailPage() {
   }, [municipalityOptions]);
 
   const itineraryCoursesSummary = useMemo(() => enrolledCourses.slice(0, 4), [enrolledCourses]);
-  const showLeaveColumns = useMemo(
-    () => enrolledCourses.some((course) => hasLeaveData(course)),
-    [enrolledCourses]
-  );
   const totalCoursesCount = enrolledCourses.length;
 
   const recommendedTop2 = useMemo(() => recommended.slice(0, 2), [recommended]);
@@ -775,6 +785,11 @@ export default function StudentDetailPage() {
       expediente: course.expediente,
       course_code: course.course_code,
       itinerary_name: course.itinerary_name ?? "",
+      formation_start_date: fmtDate(course.formation_start_date),
+      formation_end_date: fmtDate(course.formation_end_date),
+      formation_schedule: course.formation_schedule ?? "",
+      company: course.company ?? "",
+      teacher: course.teacher ?? "",
       course_status: (course.course_status === "NO APTO" || course.course_status === "INSERCION"
         ? course.course_status
         : "APTO") as EnrolledCourseForm["course_status"],
@@ -1739,7 +1754,10 @@ export default function StudentDetailPage() {
                             {course.itinerary_name || course.course_code}
                           </Typography>
                           <Typography variant="caption" color="text.secondary">
-                            {`Código: ${course.course_code} · Expediente: ${course.expediente} · Estado: ${courseStatusText(course.course_status)} · Fin formación: ${formatDateDMY(course.formation_end_date)}`}
+                            {`Código: ${course.course_code} · Expediente: ${course.expediente} · Estado: ${courseStatusText(course.course_status)} · Inicio formación: ${formatDateDMY(course.formation_start_date)} · Fin formación: ${formatDateDMY(course.formation_end_date)}`}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" display="block">
+                            {`Horario: ${course.formation_schedule || "-"} · Empresa: ${course.company || "-"} · Docente: ${course.teacher || "-"}`}
                           </Typography>
                           {hasLeaveData(course) && (
                             <Typography variant="caption" color="text.secondary" display="block">
@@ -1817,55 +1835,49 @@ export default function StudentDetailPage() {
         <DialogContent dividers>
           <Stack spacing={2}>
             <Paper variant="outlined" sx={{ borderRadius: 2, overflow: "hidden" }}>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Itinerario</TableCell>
-                    <TableCell>Código curso</TableCell>
-                    <TableCell>Expediente</TableCell>
-                    <TableCell>Estado</TableCell>
-                    <TableCell>Fecha fin formación</TableCell>
-                    {showLeaveColumns && (
-                      <>
-                        <TableCell>Fecha baja</TableCell>
-                        <TableCell>Motivo baja</TableCell>
-                        <TableCell>Baja notificada/firmada</TableCell>
-                      </>
-                    )}
-                    <TableCell align="right">Acciones</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {enrolledCourses.map((course) => (
-                    <TableRow key={course.expediente} hover>
-                      <TableCell>{course.itinerary_name || "-"}</TableCell>
-                      <TableCell>{course.course_code}</TableCell>
-                      <TableCell>{course.expediente}</TableCell>
-                      <TableCell>{courseStatusText(course.course_status)}</TableCell>
-                      <TableCell>{formatDateDMY(course.formation_end_date)}</TableCell>
-                      {showLeaveColumns && (
-                        <>
-                          <TableCell>{course.leave_date ? formatDateDMY(course.leave_date) : ""}</TableCell>
-                          <TableCell>{course.leave_reason ? leaveReasonText(course.leave_reason) : ""}</TableCell>
-                          <TableCell>{course.leave_notification ? leaveNotificationText(course.leave_notification) : ""}</TableCell>
-                        </>
-                      )}
-                      <TableCell align="right">
-                        <Button size="small" onClick={() => startEditEnrolledCourse(course)}>
-                          Editar
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {enrolledCourses.length === 0 && (
+              <Box sx={{ overflowX: "auto" }}>
+                <Table size="small">
+                  <TableHead>
                     <TableRow>
-                      <TableCell colSpan={showLeaveColumns ? 9 : 6} align="center" sx={{ py: 3, color: "text.secondary" }}>
-                        Sin itinerarios matriculados
-                      </TableCell>
+                      <TableCell>Itinerario</TableCell>
+                      <TableCell>Código curso</TableCell>
+                      <TableCell>Expediente</TableCell>
+                      <TableCell>Estado</TableCell>
+                      <TableCell>Fecha inicio formación</TableCell>
+                      <TableCell>Fecha fin formación</TableCell>
                     </TableRow>
-                  )}
-                </TableBody>
-              </Table>
+                  </TableHead>
+                  <TableBody>
+                    {enrolledCourses.map((course) => (
+                      <TableRow
+                        key={course.expediente}
+                        hover
+                        selected={enrolledCourseForm.expediente === course.expediente}
+                        sx={{ cursor: "pointer" }}
+                        onClick={() => startEditEnrolledCourse(course)}
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") startEditEnrolledCourse(course);
+                        }}
+                      >
+                        <TableCell>{course.itinerary_name || "-"}</TableCell>
+                        <TableCell>{course.course_code}</TableCell>
+                        <TableCell>{course.expediente}</TableCell>
+                        <TableCell>{courseStatusText(course.course_status)}</TableCell>
+                        <TableCell>{formatDateDMY(course.formation_start_date)}</TableCell>
+                        <TableCell>{formatDateDMY(course.formation_end_date)}</TableCell>
+                      </TableRow>
+                    ))}
+                    {enrolledCourses.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={6} align="center" sx={{ py: 3, color: "text.secondary" }}>
+                          Sin itinerarios matriculados
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </Box>
             </Paper>
             <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
               <Typography variant="subtitle2" sx={{ mb: 1 }}>
@@ -1873,7 +1885,7 @@ export default function StudentDetailPage() {
               </Typography>
               {enrolledCourseForm.expediente ? (
                 <Grid container spacing={2}>
-                  <Grid size={{ xs: 12, md: 4 }}>
+                  <Grid size={{ xs: 12, md: 6 }}>
                     <TextField
                       label="Itinerario"
                       size="small"
@@ -1882,7 +1894,7 @@ export default function StudentDetailPage() {
                       InputProps={{ readOnly: true }}
                     />
                   </Grid>
-                  <Grid size={{ xs: 12, md: 4 }}>
+                  <Grid size={{ xs: 12, md: 3 }}>
                     <TextField
                       label="Código curso"
                       size="small"
@@ -1891,12 +1903,57 @@ export default function StudentDetailPage() {
                       InputProps={{ readOnly: true }}
                     />
                   </Grid>
-                  <Grid size={{ xs: 12, md: 4 }}>
+                  <Grid size={{ xs: 12, md: 3 }}>
                     <TextField
                       label="Expediente"
                       size="small"
                       fullWidth
                       value={enrolledCourseForm.expediente}
+                      InputProps={{ readOnly: true }}
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12, md: 4 }}>
+                    <TextField
+                      label="Fecha inicio formación"
+                      size="small"
+                      fullWidth
+                      value={formatDateDMY(enrolledCourseForm.formation_start_date)}
+                      InputProps={{ readOnly: true }}
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12, md: 4 }}>
+                    <TextField
+                      label="Fecha fin formación"
+                      size="small"
+                      fullWidth
+                      value={formatDateDMY(enrolledCourseForm.formation_end_date)}
+                      InputProps={{ readOnly: true }}
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12, md: 4 }}>
+                    <TextField
+                      label="Horario formación"
+                      size="small"
+                      fullWidth
+                      value={enrolledCourseForm.formation_schedule || "-"}
+                      InputProps={{ readOnly: true }}
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12, md: 6 }}>
+                    <TextField
+                      label="Empresa"
+                      size="small"
+                      fullWidth
+                      value={enrolledCourseForm.company || "-"}
+                      InputProps={{ readOnly: true }}
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12, md: 6 }}>
+                    <TextField
+                      label="Docente"
+                      size="small"
+                      fullWidth
+                      value={enrolledCourseForm.teacher || "-"}
                       InputProps={{ readOnly: true }}
                     />
                   </Grid>

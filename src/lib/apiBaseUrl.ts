@@ -1,5 +1,28 @@
 export const API_BASE_URL_STORAGE_KEY = "app.apiBaseUrl";
-export const DEFAULT_API_BASE_URL = "http://localhost:4000/api";
+const LOCAL_DEV_DEFAULT_API_BASE_URL = "http://localhost:4000/api";
+const DEPLOYED_DEFAULT_API_BASE_URL = "/api";
+
+function isLocalHostname(hostname: string): boolean {
+  const h = (hostname || "").toLowerCase();
+  return h === "localhost" || h === "127.0.0.1" || h === "::1";
+}
+
+function getDefaultApiBaseUrl(): string {
+  if (typeof window === "undefined") return LOCAL_DEV_DEFAULT_API_BASE_URL;
+  return isLocalHostname(window.location.hostname)
+    ? LOCAL_DEV_DEFAULT_API_BASE_URL
+    : DEPLOYED_DEFAULT_API_BASE_URL;
+}
+
+function pointsToLocalhost(baseUrl: string): boolean {
+  if (!baseUrl || typeof window === "undefined") return false;
+  try {
+    const parsed = new URL(baseUrl, window.location.origin);
+    return isLocalHostname(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
 
 export function normalizeBaseUrl(raw: string): string {
   const v = (raw || "").trim();
@@ -27,7 +50,16 @@ export function normalizeBaseUrl(raw: string): string {
 export function getApiBaseUrlFromEnvOrDefault(): string {
   const env = ((import.meta as any)?.env || {}) as Record<string, string | undefined>;
   const raw = (env.VITE_API_URL || env.VITE_API_BASE_URL || "").toString().trim();
-  return normalizeBaseUrl(raw) || DEFAULT_API_BASE_URL;
+  const normalized = normalizeBaseUrl(raw);
+  if (normalized) {
+    const browserIsLocal =
+      typeof window !== "undefined" && isLocalHostname(window.location.hostname);
+    if (!browserIsLocal && pointsToLocalhost(normalized)) {
+      return getDefaultApiBaseUrl();
+    }
+    return normalized;
+  }
+  return getDefaultApiBaseUrl();
 }
 
 export function resolveApiBaseUrl(): string {
@@ -35,7 +67,15 @@ export function resolveApiBaseUrl(): string {
   try {
     const v = typeof window !== "undefined" ? localStorage.getItem(API_BASE_URL_STORAGE_KEY) : null;
     const normalized = normalizeBaseUrl(v || "");
-    if (normalized) return normalized;
+    if (normalized) {
+      const browserIsLocal =
+        typeof window !== "undefined" && isLocalHostname(window.location.hostname);
+      if (!browserIsLocal && pointsToLocalhost(normalized)) {
+        localStorage.removeItem(API_BASE_URL_STORAGE_KEY);
+      } else {
+        return normalized;
+      }
+    }
   } catch {
     // ignore
   }

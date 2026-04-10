@@ -20,6 +20,7 @@ import StudentPracticesPage from "./pages/StudentPracticesPage";
 import StudentInsertionsPage from "./pages/StudentInsertionsPage";
 import StudentDetailPage from "./pages/StudentDetailPage";
 import StudentEditPage from "./pages/StudentEditPage";
+import CoursesPage from "./pages/CoursesPage";
 
 export default function App() {
   return (
@@ -39,6 +40,7 @@ export default function App() {
           <Route path="students/:id/edit" element={<StudentEditPage />} />
           <Route index element={<DashboardPage />} />
           <Route path="students" element={<StudentsListPage />} />
+          <Route path="courses" element={<CoursesPage />} />
           <Route path="students/:id" element={<StudentDetailPage />} />
           <Route path="companies" element={<CompaniesListPage />} />
           <Route path="companies/:id" element={<CompanyDetailPage />} />
