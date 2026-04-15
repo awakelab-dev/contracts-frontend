@@ -17,6 +17,11 @@ export interface Student {
   notes?: string | null;
 }
 
+export interface CompanySector {
+  id: number;
+  sector_name: string;
+}
+
 export interface LocationDistrict {
   code: number;
   municipality_code: number;
@@ -31,14 +36,24 @@ export interface LocationMunicipality {
 export interface Company {
   id: number;
   nif?: string | null;
+  cif?: string | null;
   name: string;
+  fiscal_name?: string | null;
+  sector_id?: number | null;
+  sector_name?: string | null;
+  sector?: string | null; // alias de compatibilidad devuelto por API
   company_email?: string | null;
   company_phone?: string | null;
-  sector?: string | null;
   contact_name?: string | null;
   contact_email?: string | null;
   // legacy fields (optional)
   contact_phone?: string | null;
+  contact_date?: string | null;
+  agreement_signed?: string | null;
+  agreement_date?: string | null;
+  agreement_code?: string | null;
+  codigo_convenio?: string | null;
+  required_position?: string | null;
   notes?: string | null;
 }
 

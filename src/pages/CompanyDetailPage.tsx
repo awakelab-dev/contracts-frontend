@@ -10,13 +10,14 @@ import {
   DialogContent,
   DialogTitle,
   Grid,
+  MenuItem,
   Paper,
   Stack,
   TextField,
   Typography,
 } from "@mui/material";
 import api from "../lib/api";
-import type { Company, Vacancy } from "../types";
+import type { Company, CompanySector, Vacancy } from "../types";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 
@@ -24,6 +25,23 @@ function toNull(v: string) {
   const s = v.trim();
   return s ? s : null;
 }
+
+function sectorLabel(company: Company) {
+  return company.sector_name ?? company.sector ?? null;
+}
+
+const EMPTY_EDIT_FORM = {
+  name: "",
+  fiscal_name: "",
+  nif: "",
+  sector_id: "",
+  company_email: "",
+  company_phone: "",
+  contact_name: "",
+  contact_email: "",
+  contact_phone: "",
+  notes: "",
+};
 
 export default function CompanyDetailPage() {
   const { id } = useParams();
@@ -39,6 +57,7 @@ export default function CompanyDetailPage() {
 
   const [company, setCompany] = useState<Company | null>(null);
   const [vacancies, setVacancies] = useState<Vacancy[]>([]);
+  const [sectors, setSectors] = useState<CompanySector[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -49,17 +68,7 @@ export default function CompanyDetailPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState({
-    name: "",
-    nif: "",
-    sector: "",
-    company_email: "",
-    company_phone: "",
-    contact_name: "",
-    contact_email: "",
-    contact_phone: "",
-    notes: "",
-  });
+  const [editForm, setEditForm] = useState({ ...EMPTY_EDIT_FORM });
 
   useEffect(() => {
     if (!id) return;
@@ -71,11 +80,13 @@ export default function CompanyDetailPage() {
     Promise.all([
       api.get<Company>(`/companies/${id}`),
       api.get<Vacancy[]>(`/vacancies`),
+      api.get<CompanySector[]>(`/companies/sectors`),
     ])
-      .then(([cRes, vRes]) => {
+      .then(([cRes, vRes, sRes]) => {
         if (cancel) return;
         setCompany(cRes.data);
         setVacancies(Array.isArray(vRes.data) ? vRes.data : []);
+        setSectors(Array.isArray(sRes.data) ? sRes.data : []);
       })
       .catch((err) => {
         if (cancel) return;
@@ -105,8 +116,9 @@ export default function CompanyDetailPage() {
     setEditError(null);
     setEditForm({
       name: company.name || "",
+      fiscal_name: company.fiscal_name ?? "",
       nif: company.nif ?? "",
-      sector: company.sector ?? "",
+      sector_id: company.sector_id != null ? String(company.sector_id) : "",
       company_email: company.company_email ?? "",
       company_phone: company.company_phone ?? "",
       contact_name: company.contact_name ?? "",
@@ -134,8 +146,9 @@ export default function CompanyDetailPage() {
 
       const payload = {
         name,
+        fiscal_name: toNull(editForm.fiscal_name),
         nif: toNull(editForm.nif),
-        sector: toNull(editForm.sector),
+        sector_id: editForm.sector_id ? Number(editForm.sector_id) : null,
         company_email: toNull(editForm.company_email),
         company_phone: toNull(editForm.company_phone),
         contact_name: toNull(editForm.contact_name),
@@ -221,7 +234,13 @@ export default function CompanyDetailPage() {
       <Paper sx={{ p: 2 }}>
         <Stack spacing={1.2}>
           <Typography>
-            <strong>Nombre / Razón Social:</strong> {company.name}
+            <strong>Código:</strong> {company.id}
+          </Typography>
+          <Typography>
+            <strong>Nombre comercial:</strong> {company.name}
+          </Typography>
+          <Typography>
+            <strong>Nombre fiscal:</strong> {company.fiscal_name ?? "-"}
           </Typography>
           <Typography>
             <strong>NIF:</strong> {company.nif ?? "-"}
@@ -233,7 +252,7 @@ export default function CompanyDetailPage() {
             <strong>Tlf empresa:</strong> {company.company_phone ?? "-"}
           </Typography>
           <Typography>
-            <strong>Sector:</strong> <Chip label={company.sector ?? "-"} size="small" />
+            <strong>Sector:</strong> <Chip label={sectorLabel(company) ?? "-"} size="small" />
           </Typography>
           <Typography>
             <strong>Contacto:</strong> {company.contact_name ?? "-"}
@@ -243,6 +262,9 @@ export default function CompanyDetailPage() {
           </Typography>
           <Typography>
             <strong>Vacantes abiertas:</strong> {openCount}
+          </Typography>
+          <Typography>
+            <strong>Notas:</strong> {company.notes ?? "-"}
           </Typography>
         </Stack>
       </Paper>
@@ -258,31 +280,48 @@ export default function CompanyDetailPage() {
             )}
 
             <Grid container spacing={2}>
-              <Grid size={{ xs: 12, md: 8 }}>
+              <Grid size={{ xs: 12, md: 6 }}>
                 <TextField
-                  label="Nombre / Razón Social"
+                  label="Nombre comercial"
                   value={editForm.name}
                   onChange={(e) => setEditForm((p) => ({ ...p, name: e.target.value }))}
                   required
                   fullWidth
                 />
               </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <TextField
+                  label="Nombre fiscal"
+                  value={editForm.fiscal_name}
+                  onChange={(e) => setEditForm((p) => ({ ...p, fiscal_name: e.target.value }))}
+                  fullWidth
+                />
+              </Grid>
               <Grid size={{ xs: 12, md: 4 }}>
                 <TextField
-                  label="NIF"
+                  label="NIF / CIF"
                   value={editForm.nif}
                   onChange={(e) => setEditForm((p) => ({ ...p, nif: e.target.value }))}
                   fullWidth
                 />
               </Grid>
-
               <Grid size={{ xs: 12, md: 4 }}>
                 <TextField
+                  select
                   label="Sector"
-                  value={editForm.sector}
-                  onChange={(e) => setEditForm((p) => ({ ...p, sector: e.target.value }))}
+                  value={editForm.sector_id}
+                  onChange={(e) => setEditForm((p) => ({ ...p, sector_id: e.target.value }))}
                   fullWidth
-                />
+                >
+                  <MenuItem value="">
+                    <em>Sin sector</em>
+                  </MenuItem>
+                  {sectors.map((s) => (
+                    <MenuItem key={s.id} value={String(s.id)}>
+                      {s.sector_name}
+                    </MenuItem>
+                  ))}
+                </TextField>
               </Grid>
               <Grid size={{ xs: 12, md: 4 }}>
                 <TextField

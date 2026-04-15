@@ -185,6 +185,7 @@ const EMPTY_CONTRACT_FORM = {
 };
 const EMPTY_PRACTICE_FORM = {
   expediente: "",
+  company_id: "",
   company_name: "",
   workplace: "",
   does_practices: "NO" as (typeof PRACTICE_STATE_OPTIONS)[number],
@@ -495,6 +496,7 @@ export default function StudentDetailPage() {
   const [practiceForm, setPracticeForm] = useState<{
     id?: number;
     expediente: string;
+    company_id: string;
     company_name: string;
     workplace: string;
     does_practices: (typeof PRACTICE_STATE_OPTIONS)[number];
@@ -1031,6 +1033,7 @@ export default function StudentDetailPage() {
     setPracticeForm({
       id: p.id,
       expediente: p.expediente ?? "",
+      company_id: p.company_id != null ? String(p.company_id) : "",
       company_name: p.company_name ?? "",
       workplace: p.workplace ?? "",
       does_practices:
@@ -1066,11 +1069,17 @@ export default function StudentDetailPage() {
     try {
       setActionError(null);
       setPracticeSaving(true);
+      const companyId = parseCode(practiceForm.company_id);
+      const resolvedCompanyName =
+        companyId != null
+          ? companyName.get(companyId) ?? null
+          : (practiceForm.company_name || "").trim() || null;
 
       const payload = {
         student_id: n,
         expediente: practiceForm.expediente.trim().toUpperCase(),
-        company_name: practiceForm.company_name || null,
+        company_id: companyId,
+        company_name: resolvedCompanyName,
         workplace: practiceForm.workplace || null,
         does_practices: practiceForm.does_practices,
         conditions_for_practice: practiceForm.conditions_for_practice || null,
@@ -1684,7 +1693,10 @@ export default function StudentDetailPage() {
                       {practiceSummary.map((p) => (
                         <Box key={p.id}>
                           <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                            {p.company_name || p.company_name_resolved || "-"}
+                            {(p.company_id != null ? companyName.get(p.company_id) : null) ||
+                              p.company_name ||
+                              p.company_name_resolved ||
+                              "-"}
                           </Typography>
                           <Typography variant="caption" color="text.secondary">
                             {`${p.expediente} · ${practiceStatusText(p.practice_status)} · ${formatDateDMY(p.start_date)} → ${formatDateDMY(p.end_date)}`}
@@ -2098,6 +2110,15 @@ export default function StudentDetailPage() {
                     placeholder="dd/mm/aaaa"
                   />
                 </Grid>
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <TextField
+                    label="Centro de prácticas"
+                    size="small"
+                    fullWidth
+                    value={practiceForm.workplace}
+                    onChange={(e) => setPracticeForm((f) => ({ ...f, workplace: e.target.value }))}
+                  />
+                </Grid>
 
                 <Grid size={{ xs: 12, md: 4 }}>
                   <TextField
@@ -2489,20 +2510,41 @@ export default function StudentDetailPage() {
 
                 <Grid size={{ xs: 12, md: 6 }}>
                   <TextField
-                    label="Empresa"
+                    select
+                    label="Empresa (catálogo)"
                     size="small"
                     fullWidth
-                    value={practiceForm.company_name}
-                    onChange={(e) => setPracticeForm((f) => ({ ...f, company_name: e.target.value }))}
-                  />
+                    value={practiceForm.company_id}
+                    onChange={(e) =>
+                      setPracticeForm((f) => ({
+                        ...f,
+                        company_id: e.target.value,
+                        company_name: e.target.value ? "" : f.company_name,
+                      }))
+                    }
+                  >
+                    <MenuItem value="">
+                      <em>Sin empresa del catálogo</em>
+                    </MenuItem>
+                    {companies
+                      .slice()
+                      .sort((a, b) => a.name.localeCompare(b.name, "es"))
+                      .map((c) => (
+                        <MenuItem key={c.id} value={String(c.id)}>
+                          {`${c.id} · ${c.name}`}
+                        </MenuItem>
+                      ))}
+                  </TextField>
                 </Grid>
                 <Grid size={{ xs: 12, md: 6 }}>
                   <TextField
-                    label="Centro de prácticas"
+                    label="Empresa (texto libre)"
                     size="small"
                     fullWidth
-                    value={practiceForm.workplace}
-                    onChange={(e) => setPracticeForm((f) => ({ ...f, workplace: e.target.value }))}
+                    disabled={Boolean(practiceForm.company_id)}
+                    value={practiceForm.company_name}
+                    onChange={(e) => setPracticeForm((f) => ({ ...f, company_name: e.target.value }))}
+                    helperText={practiceForm.company_id ? "Se usará la empresa seleccionada arriba." : "Usar solo si la empresa no está en catálogo."}
                   />
                 </Grid>
 
@@ -2641,7 +2683,10 @@ export default function StudentDetailPage() {
                         <TableCell>{p.itinerary_name || p.course_code || "-"}</TableCell>
                         <TableCell>
                           <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                            {p.company_name || p.company_name_resolved || "-"}
+                            {(p.company_id != null ? companyName.get(p.company_id) : null) ||
+                              p.company_name ||
+                              p.company_name_resolved ||
+                              "-"}
                           </Typography>
                         </TableCell>
                         <TableCell>{practiceStatusText(p.practice_status)}</TableCell>

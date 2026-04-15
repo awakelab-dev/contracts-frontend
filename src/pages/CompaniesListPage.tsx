@@ -10,6 +10,7 @@ import {
   DialogTitle,
   Grid,
   InputAdornment,
+  MenuItem,
   Paper,
   Stack,
   Table,
@@ -25,7 +26,7 @@ import SearchIcon from "@mui/icons-material/Search";
 import AddIcon from "@mui/icons-material/Add";
 import { useNavigate } from "react-router-dom";
 import api from "../lib/api";
-import type { Company, Vacancy } from "../types";
+import type { Company, CompanySector, Vacancy } from "../types";
 
 function sectorChip(sector?: string | null) {
   const s = sector || "-";
@@ -43,12 +44,30 @@ function toNull(v: string) {
   return s ? s : null;
 }
 
+function sectorLabel(company: Company) {
+  return company.sector_name ?? company.sector ?? null;
+}
+
+const EMPTY_CREATE_FORM = {
+  name: "",
+  fiscal_name: "",
+  nif: "",
+  sector_id: "",
+  company_email: "",
+  company_phone: "",
+  contact_name: "",
+  contact_email: "",
+  contact_phone: "",
+  notes: "",
+};
+
 export default function CompaniesListPage() {
   const navigate = useNavigate();
 
   const [q, setQ] = useState("");
   const [companies, setCompanies] = useState<Company[]>([]);
   const [vacancies, setVacancies] = useState<Vacancy[]>([]);
+  const [sectors, setSectors] = useState<CompanySector[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -58,17 +77,7 @@ export default function CompaniesListPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [createSaving, setCreateSaving] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
-  const [createForm, setCreateForm] = useState({
-    name: "",
-    nif: "",
-    sector: "",
-    company_email: "",
-    company_phone: "",
-    contact_name: "",
-    contact_email: "",
-    contact_phone: "",
-    notes: "",
-  });
+  const [createForm, setCreateForm] = useState({ ...EMPTY_CREATE_FORM });
 
   async function reloadCompanies() {
     const { data } = await api.get<Company[]>("/companies");
@@ -79,11 +88,17 @@ export default function CompaniesListPage() {
     let cancel = false;
     setLoading(true);
     setError(null);
-    Promise.all([api.get<Company[]>("/companies"), api.get<Vacancy[]>("/vacancies")])
-      .then(([cRes, vRes]) => {
+
+    Promise.all([
+      api.get<Company[]>("/companies"),
+      api.get<Vacancy[]>("/vacancies"),
+      api.get<CompanySector[]>("/companies/sectors"),
+    ])
+      .then(([cRes, vRes, sRes]) => {
         if (cancel) return;
         setCompanies(Array.isArray(cRes.data) ? cRes.data : []);
         setVacancies(Array.isArray(vRes.data) ? vRes.data : []);
+        setSectors(Array.isArray(sRes.data) ? sRes.data : []);
       })
       .catch((err) => {
         if (cancel) return;
@@ -94,6 +109,7 @@ export default function CompaniesListPage() {
         if (cancel) return;
         setLoading(false);
       });
+
     return () => {
       cancel = true;
     };
@@ -101,17 +117,7 @@ export default function CompaniesListPage() {
 
   function openCreate() {
     setCreateError(null);
-    setCreateForm({
-      name: "",
-      nif: "",
-      sector: "",
-      company_email: "",
-      company_phone: "",
-      contact_name: "",
-      contact_email: "",
-      contact_phone: "",
-      notes: "",
-    });
+    setCreateForm({ ...EMPTY_CREATE_FORM });
     setCreateOpen(true);
   }
 
@@ -128,8 +134,9 @@ export default function CompaniesListPage() {
 
       const payload = {
         name,
+        fiscal_name: toNull(createForm.fiscal_name),
         nif: toNull(createForm.nif),
-        sector: toNull(createForm.sector),
+        sector_id: createForm.sector_id ? Number(createForm.sector_id) : null,
         company_email: toNull(createForm.company_email),
         company_phone: toNull(createForm.company_phone),
         contact_name: toNull(createForm.contact_name),
@@ -164,13 +171,16 @@ export default function CompaniesListPage() {
     const list = companies.map((c) => ({
       ...c,
       vacanciesOpen: openByCompany.get(c.id) || 0,
+      sectorResolved: sectorLabel(c) || "",
     }));
+
     if (!term) return list;
     return list.filter((c) =>
       [
         c.nif ?? "",
         c.name,
-        c.sector ?? "",
+        c.fiscal_name ?? "",
+        c.sectorResolved,
         c.company_email ?? "",
         c.company_phone ?? "",
         c.contact_name ?? "",
@@ -203,7 +213,7 @@ export default function CompaniesListPage() {
         <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ xs: "stretch", sm: "center" }}>
           <TextField
             size="small"
-            placeholder="Buscar por NIF, nombre, sector, email o contacto"
+            placeholder="Buscar por código, nombre, sector, email o contacto"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             InputProps={{
@@ -245,7 +255,8 @@ export default function CompaniesListPage() {
                 </TableCell>
               </TableRow>
             )}
-            {!loading && !error &&
+            {!loading &&
+              !error &&
               pagedRows.map((c) => (
                 <TableRow
                   key={c.id}
@@ -263,8 +274,13 @@ export default function CompaniesListPage() {
                         {c.name}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
-                        NIF: {c.nif ?? "-"}
+                        Código: {c.id} · NIF: {c.nif ?? "-"}
                       </Typography>
+                      {!!c.fiscal_name && (
+                        <Typography variant="caption" color="text.secondary">
+                          Fiscal: {c.fiscal_name}
+                        </Typography>
+                      )}
                       {(c.company_email || c.company_phone) && (
                         <Typography variant="caption" color="text.secondary">
                           {[c.company_email, c.company_phone].filter(Boolean).join(" · ")}
@@ -272,7 +288,7 @@ export default function CompaniesListPage() {
                       )}
                     </Stack>
                   </TableCell>
-                  <TableCell>{sectorChip(c.sector)}</TableCell>
+                  <TableCell>{sectorChip(sectorLabel(c))}</TableCell>
                   <TableCell>
                     <Chip label={`${c.vacanciesOpen} abiertas`} size="small" color={c.vacanciesOpen > 0 ? "success" : "default"} />
                   </TableCell>
@@ -322,31 +338,48 @@ export default function CompaniesListPage() {
             )}
 
             <Grid container spacing={2}>
-              <Grid size={{ xs: 12, md: 8 }}>
+              <Grid size={{ xs: 12, md: 6 }}>
                 <TextField
-                  label="Nombre / Razón Social"
+                  label="Nombre comercial"
                   value={createForm.name}
                   onChange={(e) => setCreateForm((p) => ({ ...p, name: e.target.value }))}
                   required
                   fullWidth
                 />
               </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <TextField
+                  label="Nombre fiscal"
+                  value={createForm.fiscal_name}
+                  onChange={(e) => setCreateForm((p) => ({ ...p, fiscal_name: e.target.value }))}
+                  fullWidth
+                />
+              </Grid>
               <Grid size={{ xs: 12, md: 4 }}>
                 <TextField
-                  label="NIF"
+                  label="NIF / CIF"
                   value={createForm.nif}
                   onChange={(e) => setCreateForm((p) => ({ ...p, nif: e.target.value }))}
                   fullWidth
                 />
               </Grid>
-
               <Grid size={{ xs: 12, md: 4 }}>
                 <TextField
+                  select
                   label="Sector"
-                  value={createForm.sector}
-                  onChange={(e) => setCreateForm((p) => ({ ...p, sector: e.target.value }))}
+                  value={createForm.sector_id}
+                  onChange={(e) => setCreateForm((p) => ({ ...p, sector_id: e.target.value }))}
                   fullWidth
-                />
+                >
+                  <MenuItem value="">
+                    <em>Sin sector</em>
+                  </MenuItem>
+                  {sectors.map((s) => (
+                    <MenuItem key={s.id} value={String(s.id)}>
+                      {s.sector_name}
+                    </MenuItem>
+                  ))}
+                </TextField>
               </Grid>
               <Grid size={{ xs: 12, md: 4 }}>
                 <TextField
@@ -364,10 +397,9 @@ export default function CompaniesListPage() {
                   fullWidth
                 />
               </Grid>
-
               <Grid size={{ xs: 12, md: 4 }}>
                 <TextField
-                  label="Contacto"
+                  label="Persona contacto"
                   value={createForm.contact_name}
                   onChange={(e) => setCreateForm((p) => ({ ...p, contact_name: e.target.value }))}
                   fullWidth
