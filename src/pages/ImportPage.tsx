@@ -35,7 +35,7 @@ const SCHEMES = {
     "email",
     "notes",
   ],
-  companies: ["nif", "name", "company_email", "company_phone", "sector", "contact_name", "contact_email"],
+  companies: ["cif", "name", "fiscal_name", "company_email", "company_phone", "sector", "contact_name", "contact_email"],
   vacancies: ["title", "company_name", "sector", "location"],
 } as const;
 type ImportType = keyof typeof SCHEMES;
@@ -95,8 +95,9 @@ export default function ImportPage() {
       };
     } else if (type === 'companies') {
       return {
-        nif: find('nif','cif','vat','tax'),
-        name: find('name','empresa','razon','razón','social'),
+        cif: find('cif','nif','vat','tax'),
+        name: find('nombre comercial','commercial','name','empresa'),
+        fiscal_name: find('nombre fiscal','razon social','razón social','fiscal','legal'),
         company_email: find('email empresa','correo empresa','mail empresa','company email','email'),
         company_phone: find('tlf','tel','phone','telefono','teléfono','movil','móvil'),
         sector: find('sector','industry'),
@@ -201,8 +202,9 @@ const handleDelimiterChange = (val: string) => {
     }
     if (importType === 'companies') {
       const payloadRows = rows.map((r) => ({
-        nif: sanitize((r[mapping['nif']] || "").toString()),
+        cif: sanitize((r[mapping['cif']] || "").toString()),
         name: sanitize((r[mapping['name']] || "").toString()),
+        fiscal_name: sanitize((r[mapping['fiscal_name']] || "").toString()),
         company_email: sanitize((r[mapping['company_email']] || "").toString()),
         company_phone: sanitize((r[mapping['company_phone']] || "").toString()),
         sector: sanitize((r[mapping['sector']] || "").toString()),

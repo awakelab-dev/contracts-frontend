@@ -17,6 +17,16 @@ export interface Student {
   notes?: string | null;
 }
 
+export interface CompanyPracticeCenter {
+  id: number;
+  company_id: number;
+  address?: string | null;
+  sector?: string | null;
+  center?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
 export interface CompanySector {
   id: number;
   sector_name: string;
@@ -35,7 +45,6 @@ export interface LocationMunicipality {
 
 export interface Company {
   id: number;
-  nif?: string | null;
   cif?: string | null;
   name: string;
   fiscal_name?: string | null;
@@ -54,6 +63,7 @@ export interface Company {
   agreement_code?: string | null;
   codigo_convenio?: string | null;
   required_position?: string | null;
+  has_complex_practice_centers?: boolean | number | null;
   notes?: string | null;
 }
 

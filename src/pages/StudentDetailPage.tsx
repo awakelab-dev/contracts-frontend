@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import {
   Alert,
+  Autocomplete,
   Box,
   Button,
   Checkbox,
@@ -27,7 +28,7 @@ import {
 } from "@mui/material";
 import api from "../lib/api";
 import { fetchDistricts, fetchMunicipalities } from "../api/locations";
-import type { Company, Interview, LocationDistrict, LocationMunicipality, Student, Vacancy } from "../types";
+import type { Company, CompanyPracticeCenter, Interview, LocationDistrict, LocationMunicipality, Student, Vacancy } from "../types";
 import { scoreColor } from "../utils/MatchingEngine";
 import { calculateAgeFromBirthDate, formatDateDMY } from "../utils/date";
 import DateTextField from "../components/DateTextField";
@@ -161,6 +162,7 @@ const PRACTICE_STATUS_OPTIONS = [
 ] as const;
 
 type InvitationFormMode = "create" | "edit";
+type PracticeFormMode = "create" | "view" | "edit" | "delete";
 type ContractFormMode = "create" | "edit";
 
 const EMPTY_INVITATION_FORM = {
@@ -187,6 +189,9 @@ const EMPTY_PRACTICE_FORM = {
   expediente: "",
   company_id: "",
   company_name: "",
+  company_fiscal_name: "",
+  practice_center_sector: "",
+  practice_center_id: "",
   workplace: "",
   does_practices: "NO" as (typeof PRACTICE_STATE_OPTIONS)[number],
   conditions_for_practice: "",
@@ -457,6 +462,8 @@ export default function StudentDetailPage() {
   const [interviewsOpen, setInterviewsOpen] = useState(false);
   const [invitationsOpen, setInvitationsOpen] = useState(false);
   const [practicesOpen, setPracticesOpen] = useState(false);
+  const [practiceFormOpen, setPracticeFormOpen] = useState(false);
+  const [practiceFormMode, setPracticeFormMode] = useState<PracticeFormMode | null>(null);
   const [contractsOpen, setContractsOpen] = useState(false);
 
   // Enrolled itinerary form (update)
@@ -498,6 +505,9 @@ export default function StudentDetailPage() {
     expediente: string;
     company_id: string;
     company_name: string;
+    company_fiscal_name: string;
+    practice_center_sector: string;
+    practice_center_id: string;
     workplace: string;
     does_practices: (typeof PRACTICE_STATE_OPTIONS)[number];
     conditions_for_practice: string;
@@ -512,6 +522,8 @@ export default function StudentDetailPage() {
     leave_date: string;
   }>({ ...EMPTY_PRACTICE_FORM });
   const [practiceSaving, setPracticeSaving] = useState(false);
+  const [practiceCompanyCenters, setPracticeCompanyCenters] = useState<CompanyPracticeCenter[]>([]);
+  const [practiceCompanyCentersLoading, setPracticeCompanyCentersLoading] = useState(false);
 
   // Hiring contracts form
   const [contractForm, setContractForm] = useState<{
@@ -539,6 +551,275 @@ export default function StudentDetailPage() {
     companies.forEach((c) => m.set(c.id, c.name));
     return m;
   }, [companies]);
+
+  const practiceCompanyNameOptions = useMemo(() => {
+    return Array.from(
+      new Set(
+        companies
+          .map((c) => c.name.trim())
+          .filter((name) => name.length > 0)
+      )
+    ).sort((a, b) => a.localeCompare(b, "es", { sensitivity: "base" }));
+  }, [companies]);
+
+  const practiceCompaniesForSelectedName = useMemo(() => {
+    if (!practiceForm.company_name) return [];
+    return companies
+      .filter((c) => c.name === practiceForm.company_name && (c.fiscal_name ?? "").trim().length > 0)
+      .sort((a, b) => (a.fiscal_name ?? "").localeCompare(b.fiscal_name ?? "", "es", { sensitivity: "base" }));
+  }, [companies, practiceForm.company_name]);
+
+  const practiceFiscalNameOptions = useMemo(() => {
+    return Array.from(
+      new Set(
+        practiceCompaniesForSelectedName
+          .map((c) => (c.fiscal_name ?? "").trim())
+          .filter((fiscalName) => fiscalName.length > 0)
+      )
+    ).sort((a, b) => a.localeCompare(b, "es", { sensitivity: "base" }));
+  }, [practiceCompaniesForSelectedName]);
+
+  const selectedPracticeCompanyId = useMemo(
+    () => parseCode(practiceForm.company_id),
+    [practiceForm.company_id]
+  );
+
+  const selectedPracticeCompany = useMemo(() => {
+    if (!selectedPracticeCompanyId) return null;
+    return companies.find((c) => c.id === selectedPracticeCompanyId) ?? null;
+  }, [companies, selectedPracticeCompanyId]);
+
+  const selectedPracticeCompanyHasComplexLayout = Boolean(
+    Number(selectedPracticeCompany?.has_complex_practice_centers ?? 0)
+  );
+
+  const practiceCenterSectorOptions = useMemo(() => {
+    return Array.from(
+      new Set(
+        practiceCompanyCenters
+          .map((pc) => (pc.sector ?? "").trim())
+          .filter((sector) => sector.length > 0)
+      )
+    ).sort((a, b) => a.localeCompare(b, "es", { sensitivity: "base" }));
+  }, [practiceCompanyCenters]);
+
+  const practiceCenterOptionsForSelectedSector = useMemo(() => {
+    if (!selectedPracticeCompanyHasComplexLayout) return [];
+    if (!practiceForm.practice_center_sector) return [];
+    return practiceCompanyCenters
+      .filter(
+        (pc) =>
+          (pc.sector ?? "").trim() === practiceForm.practice_center_sector &&
+          (pc.center ?? "").trim().length > 0
+      )
+      .sort((a, b) => (a.center ?? "").localeCompare(b.center ?? "", "es", { sensitivity: "base" }));
+  }, [practiceCompanyCenters, practiceForm.practice_center_sector, selectedPracticeCompanyHasComplexLayout]);
+
+  const practiceCenterAddressOptions = useMemo(() => {
+    if (selectedPracticeCompanyHasComplexLayout) return [];
+    return practiceCompanyCenters
+      .filter((pc) => (pc.address ?? "").trim().length > 0)
+      .sort((a, b) => (a.address ?? "").localeCompare(b.address ?? "", "es", { sensitivity: "base" }));
+  }, [practiceCompanyCenters, selectedPracticeCompanyHasComplexLayout]);
+
+  useEffect(() => {
+    setPracticeForm((f) => {
+      if (!f.company_name) {
+        if (
+          !f.company_fiscal_name &&
+          !f.company_id &&
+          !f.practice_center_sector &&
+          !f.practice_center_id &&
+          !f.workplace
+        ) {
+          return f;
+        }
+        return {
+          ...f,
+          company_fiscal_name: "",
+          company_id: "",
+          practice_center_sector: "",
+          practice_center_id: "",
+          workplace: "",
+        };
+      }
+
+      const fiscalSet = new Set(practiceFiscalNameOptions);
+      let nextFiscalName = f.company_fiscal_name;
+      let nextCompanyId = f.company_id;
+
+      if (nextFiscalName && !fiscalSet.has(nextFiscalName)) {
+        nextFiscalName = "";
+        nextCompanyId = "";
+      }
+
+      if (!nextFiscalName && practiceFiscalNameOptions.length === 1) {
+        nextFiscalName = practiceFiscalNameOptions[0];
+      }
+
+      if (nextFiscalName) {
+        const matchedCompany = practiceCompaniesForSelectedName.find(
+          (c) => (c.fiscal_name ?? "").trim() === nextFiscalName
+        );
+        const matchedCompanyId = matchedCompany ? String(matchedCompany.id) : "";
+        if (matchedCompanyId && nextCompanyId !== matchedCompanyId) {
+          nextCompanyId = matchedCompanyId;
+        }
+      }
+
+      if (!nextFiscalName && nextCompanyId) {
+        nextCompanyId = "";
+      }
+
+      const companyChanged = nextCompanyId !== f.company_id;
+      const nextSector = companyChanged ? "" : f.practice_center_sector;
+      const nextCenterId = companyChanged ? "" : f.practice_center_id;
+      const nextWorkplace = companyChanged ? "" : f.workplace;
+
+      if (
+        nextFiscalName === f.company_fiscal_name &&
+        nextCompanyId === f.company_id &&
+        nextSector === f.practice_center_sector &&
+        nextCenterId === f.practice_center_id &&
+        nextWorkplace === f.workplace
+      ) {
+        return f;
+      }
+
+      return {
+        ...f,
+        company_fiscal_name: nextFiscalName,
+        company_id: nextCompanyId,
+        practice_center_sector: nextSector,
+        practice_center_id: nextCenterId,
+        workplace: nextWorkplace,
+      };
+    });
+  }, [practiceCompaniesForSelectedName, practiceFiscalNameOptions, practiceForm.company_name]);
+
+  useEffect(() => {
+    if (!selectedPracticeCompanyId) {
+      setPracticeCompanyCenters([]);
+      setPracticeCompanyCentersLoading(false);
+      return;
+    }
+
+    let cancel = false;
+    setPracticeCompanyCentersLoading(true);
+
+    api.get<CompanyPracticeCenter[]>(`/companies/${selectedPracticeCompanyId}/practice-centers`)
+      .then((res) => {
+        if (cancel) return;
+        setPracticeCompanyCenters(Array.isArray(res.data) ? res.data : []);
+      })
+      .catch(() => {
+        if (cancel) return;
+        setPracticeCompanyCenters([]);
+      })
+      .finally(() => {
+        if (cancel) return;
+        setPracticeCompanyCentersLoading(false);
+      });
+
+    return () => {
+      cancel = true;
+    };
+  }, [selectedPracticeCompanyId]);
+
+  useEffect(() => {
+    if (!selectedPracticeCompanyId) return;
+
+    setPracticeForm((f) => {
+      if (practiceCompanyCenters.length === 0) {
+        if (!f.practice_center_sector && !f.practice_center_id) return f;
+        return { ...f, practice_center_sector: "", practice_center_id: "" };
+      }
+
+      if (selectedPracticeCompanyHasComplexLayout) {
+        let nextSector = f.practice_center_sector;
+        let nextCenterId = f.practice_center_id;
+        let nextWorkplace = "";
+
+        if (nextSector && !practiceCenterSectorOptions.includes(nextSector)) {
+          nextSector = "";
+        }
+
+        if (!nextSector && practiceCenterSectorOptions.length === 1) {
+          nextSector = practiceCenterSectorOptions[0];
+        }
+
+        const scopedCenters = practiceCompanyCenters.filter(
+          (pc) => (pc.sector ?? "").trim() === nextSector
+        );
+
+        if (nextCenterId && !scopedCenters.some((pc) => String(pc.id) === nextCenterId)) {
+          nextCenterId = "";
+        }
+
+        const selectedCenter = scopedCenters.find((pc) => String(pc.id) === nextCenterId);
+        nextWorkplace = selectedCenter?.address ?? "";
+
+        if (
+          nextSector === f.practice_center_sector &&
+          nextCenterId === f.practice_center_id &&
+          nextWorkplace === f.workplace
+        ) {
+          return f;
+        }
+
+        return {
+          ...f,
+          practice_center_sector: nextSector,
+          practice_center_id: nextCenterId,
+          workplace: nextWorkplace,
+        };
+      }
+
+      let nextCenterId = f.practice_center_id;
+      let nextWorkplace = f.workplace;
+
+      if (nextCenterId && !practiceCenterAddressOptions.some((pc) => String(pc.id) === nextCenterId)) {
+        nextCenterId = "";
+      }
+
+      if (!nextCenterId && nextWorkplace) {
+        const matchByAddress = practiceCenterAddressOptions.find((pc) => (pc.address ?? "") === nextWorkplace);
+        if (matchByAddress) {
+          nextCenterId = String(matchByAddress.id);
+        }
+      }
+
+      if (!nextCenterId && practiceCenterAddressOptions.length === 1) {
+        nextCenterId = String(practiceCenterAddressOptions[0].id);
+      }
+
+      const selectedCenter = practiceCenterAddressOptions.find((pc) => String(pc.id) === nextCenterId);
+      if (selectedCenter?.address) {
+        nextWorkplace = selectedCenter.address;
+      }
+
+      if (
+        nextCenterId === f.practice_center_id &&
+        nextWorkplace === f.workplace &&
+        !f.practice_center_sector
+      ) {
+        return f;
+      }
+
+      return {
+        ...f,
+        practice_center_sector: "",
+        practice_center_id: nextCenterId,
+        workplace: nextWorkplace,
+      };
+    });
+  }, [
+    selectedPracticeCompanyId,
+    selectedPracticeCompanyHasComplexLayout,
+    practiceCompanyCenters,
+    practiceCenterSectorOptions,
+    practiceCenterAddressOptions,
+  ]);
 
   const districtNameByCode = useMemo(() => {
     const m = new Map<number, string>();
@@ -1023,18 +1304,59 @@ export default function StudentDetailPage() {
   }
 
   function startCreatePractice() {
+    setPracticeCompanyCenters([]);
+    setPracticeForm({
+      ...EMPTY_PRACTICE_FORM,
+      expediente: enrolledCourses[0]?.expediente ?? "",
+    });
+  }
+  function closePracticeForm() {
+    setPracticeFormOpen(false);
+    setPracticeFormMode(null);
+    setPracticeCompanyCenters([]);
+    setPracticeCompanyCentersLoading(false);
     setPracticeForm({
       ...EMPTY_PRACTICE_FORM,
       expediente: enrolledCourses[0]?.expediente ?? "",
     });
   }
 
+  function openPracticesDialog() {
+    setPracticesOpen(true);
+    closePracticeForm();
+  }
+
+  function closePracticesDialog() {
+    setPracticesOpen(false);
+    closePracticeForm();
+  }
+
+  function openCreatePracticeForm() {
+    startCreatePractice();
+    setPracticeFormMode("create");
+    setPracticeFormOpen(true);
+  }
+
+  function openViewPracticeForm(p: PracticeRow) {
+    startEditPractice(p);
+    setPracticeFormMode("view");
+    setPracticeFormOpen(true);
+  }
+
   function startEditPractice(p: PracticeRow) {
+    const companyIdFromPractice = p.company_id != null ? Number(p.company_id) : null;
+    const companyFromCatalog =
+      companyIdFromPractice != null
+        ? companies.find((c) => c.id === companyIdFromPractice) ?? null
+        : null;
     setPracticeForm({
       id: p.id,
       expediente: p.expediente ?? "",
-      company_id: p.company_id != null ? String(p.company_id) : "",
-      company_name: p.company_name ?? "",
+      company_id: companyFromCatalog ? String(companyFromCatalog.id) : p.company_id != null ? String(p.company_id) : "",
+      company_name: companyFromCatalog?.name ?? (p.company_name ?? ""),
+      company_fiscal_name: companyFromCatalog?.fiscal_name ?? "",
+      practice_center_sector: "",
+      practice_center_id: "",
       workplace: p.workplace ?? "",
       does_practices:
         (p.does_practices &&
@@ -1063,17 +1385,36 @@ export default function StudentDetailPage() {
   }
 
   async function savePractice() {
+    if (practiceFormMode !== "create" && practiceFormMode !== "edit") return;
     const n = Number(sid);
     if (!Number.isFinite(n) || !practiceForm.expediente.trim()) return;
+
+    const companyId = parseCode(practiceForm.company_id);
+    if (!companyId || !practiceForm.company_name.trim() || !practiceForm.company_fiscal_name.trim()) {
+      setActionError("Debes seleccionar Nombre comercial y Nombre fiscal de empresa.");
+      return;
+    }
+
+    if (practiceCompanyCenters.length > 0) {
+      if (selectedPracticeCompanyHasComplexLayout) {
+        if (
+          !practiceForm.practice_center_sector ||
+          !practiceForm.practice_center_id ||
+          !practiceForm.workplace.trim()
+        ) {
+          setActionError("Selecciona Sector, Centro y Dirección de centro de prácticas.");
+          return;
+        }
+      } else if (!practiceForm.practice_center_id || !practiceForm.workplace.trim()) {
+        setActionError("Selecciona una Dirección de centro de prácticas.");
+        return;
+      }
+    }
 
     try {
       setActionError(null);
       setPracticeSaving(true);
-      const companyId = parseCode(practiceForm.company_id);
-      const resolvedCompanyName =
-        companyId != null
-          ? companyName.get(companyId) ?? null
-          : (practiceForm.company_name || "").trim() || null;
+      const resolvedCompanyName = practiceForm.company_name.trim();
 
       const payload = {
         student_id: n,
@@ -1101,10 +1442,7 @@ export default function StudentDetailPage() {
       }
 
       await refreshPractices();
-      setPracticeForm({
-        ...EMPTY_PRACTICE_FORM,
-        expediente: practiceForm.expediente || enrolledCourses[0]?.expediente || "",
-      });
+      closePracticeForm();
     } catch (e: any) {
       setActionError(e?.response?.data?.error || e?.message || "Error al guardar práctica");
     } finally {
@@ -1118,10 +1456,7 @@ export default function StudentDetailPage() {
       await api.delete(`/practices/${practiceId}`);
       await refreshPractices();
       if (practiceForm.id === practiceId) {
-        setPracticeForm({
-          ...EMPTY_PRACTICE_FORM,
-          expediente: enrolledCourses[0]?.expediente || "",
-        });
+        closePracticeForm();
       }
     } catch (e: any) {
       setActionError(e?.response?.data?.error || e?.message || "Error al eliminar práctica");
@@ -1679,10 +2014,7 @@ export default function StudentDetailPage() {
                     <Button
                       size="small"
                       variant="outlined"
-                      onClick={() => {
-                        startCreatePractice();
-                        setPracticesOpen(true);
-                      }}
+                      onClick={openPracticesDialog}
                     >
                       Ver
                     </Button>
@@ -2427,235 +2759,20 @@ export default function StudentDetailPage() {
         </DialogActions>
       </Dialog>
 
-      {/* Prácticas: listado completo + CRUD */}
-      <Dialog open={practicesOpen} onClose={() => setPracticesOpen(false)} fullWidth maxWidth="xl">
+      {/* Prácticas: listado completo */}
+      <Dialog open={practicesOpen} onClose={closePracticesDialog} fullWidth maxWidth="xl">
         <DialogTitle>Prácticas no Laborales ({practiceRows.length})</DialogTitle>
         <DialogContent dividers>
           <Stack spacing={2}>
             <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
-              <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                Total: {practiceRows.length}
-              </Typography>
-            </Paper>
-
-            <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
-              <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                {practiceForm.id ? "Editar práctica" : "Nueva práctica"}
-              </Typography>
-              <Grid container spacing={2}>
-                <Grid size={{ xs: 12, md: 6 }}>
-                  <TextField
-                    select
-                    label="Expediente"
-                    size="small"
-                    fullWidth
-                    value={practiceForm.expediente}
-                    onChange={(e) => setPracticeForm((f) => ({ ...f, expediente: e.target.value }))}
-                  >
-                    <MenuItem value="">
-                      <em>Selecciona expediente</em>
-                    </MenuItem>
-                    {enrolledCourses.map((c) => (
-                      <MenuItem key={c.expediente} value={c.expediente}>
-                        {`${c.expediente} · ${c.itinerary_name || c.course_code}`}
-                      </MenuItem>
-                    ))}
-                  </TextField>
-                </Grid>
-                <Grid size={{ xs: 12, md: 3 }}>
-                  <TextField
-                    select
-                    label="¿Hace prácticas?"
-                    size="small"
-                    fullWidth
-                    value={practiceForm.does_practices}
-                    onChange={(e) =>
-                      setPracticeForm((f) => ({
-                        ...f,
-                        does_practices: e.target.value as (typeof PRACTICE_STATE_OPTIONS)[number],
-                      }))
-                    }
-                  >
-                    {PRACTICE_STATE_OPTIONS.map((opt) => (
-                      <MenuItem key={opt} value={opt}>
-                        {practiceStateText(opt)}
-                      </MenuItem>
-                    ))}
-                  </TextField>
-                </Grid>
-                <Grid size={{ xs: 12, md: 3 }}>
-                  <TextField
-                    select
-                    label="Estado prácticas"
-                    size="small"
-                    fullWidth
-                    value={practiceForm.practice_status}
-                    onChange={(e) =>
-                      setPracticeForm((f) => ({
-                        ...f,
-                        practice_status: e.target.value as (typeof PRACTICE_STATUS_OPTIONS)[number],
-                      }))
-                    }
-                  >
-                    <MenuItem value="">
-                      <em>—</em>
-                    </MenuItem>
-                    {PRACTICE_STATUS_OPTIONS.filter(Boolean).map((opt) => (
-                      <MenuItem key={opt} value={opt}>
-                        {practiceStatusText(opt)}
-                      </MenuItem>
-                    ))}
-                  </TextField>
-                </Grid>
-
-                <Grid size={{ xs: 12, md: 6 }}>
-                  <TextField
-                    select
-                    label="Empresa (catálogo)"
-                    size="small"
-                    fullWidth
-                    value={practiceForm.company_id}
-                    onChange={(e) =>
-                      setPracticeForm((f) => ({
-                        ...f,
-                        company_id: e.target.value,
-                        company_name: e.target.value ? "" : f.company_name,
-                      }))
-                    }
-                  >
-                    <MenuItem value="">
-                      <em>Sin empresa del catálogo</em>
-                    </MenuItem>
-                    {companies
-                      .slice()
-                      .sort((a, b) => a.name.localeCompare(b.name, "es"))
-                      .map((c) => (
-                        <MenuItem key={c.id} value={String(c.id)}>
-                          {`${c.id} · ${c.name}`}
-                        </MenuItem>
-                      ))}
-                  </TextField>
-                </Grid>
-                <Grid size={{ xs: 12, md: 6 }}>
-                  <TextField
-                    label="Empresa (texto libre)"
-                    size="small"
-                    fullWidth
-                    disabled={Boolean(practiceForm.company_id)}
-                    value={practiceForm.company_name}
-                    onChange={(e) => setPracticeForm((f) => ({ ...f, company_name: e.target.value }))}
-                    helperText={practiceForm.company_id ? "Se usará la empresa seleccionada arriba." : "Usar solo si la empresa no está en catálogo."}
-                  />
-                </Grid>
-
-                <Grid size={{ xs: 12, md: 4 }}>
-                  <DateTextField
-                    label="Inicio"
-                    size="small"
-                    fullWidth
-                    value={practiceForm.start_date}
-                    onChange={(nextIso) => setPracticeForm((f) => ({ ...f, start_date: nextIso }))}
-                    placeholder="dd/mm/aaaa"
-                  />
-                </Grid>
-                <Grid size={{ xs: 12, md: 4 }}>
-                  <DateTextField
-                    label="Fin"
-                    size="small"
-                    fullWidth
-                    value={practiceForm.end_date}
-                    onChange={(nextIso) => setPracticeForm((f) => ({ ...f, end_date: nextIso }))}
-                    placeholder="dd/mm/aaaa"
-                  />
-                </Grid>
-                <Grid size={{ xs: 12, md: 4 }}>
-                  <DateTextField
-                    label="Fecha baja"
-                    size="small"
-                    fullWidth
-                    value={practiceForm.leave_date}
-                    onChange={(nextIso) => setPracticeForm((f) => ({ ...f, leave_date: nextIso }))}
-                    placeholder="dd/mm/aaaa"
-                  />
-                </Grid>
-
-                <Grid size={{ xs: 12, md: 4 }}>
-                  <TextField
-                    label="Nº días asistencia"
-                    type="number"
-                    size="small"
-                    fullWidth
-                    value={practiceForm.attendance_days}
-                    onChange={(e) => setPracticeForm((f) => ({ ...f, attendance_days: e.target.value }))}
-                  />
-                </Grid>
-                <Grid size={{ xs: 12, md: 4 }}>
-                  <TextField
-                    label="Turno"
-                    size="small"
-                    fullWidth
-                    value={practiceForm.practice_shift}
-                    onChange={(e) => setPracticeForm((f) => ({ ...f, practice_shift: e.target.value }))}
-                  />
-                </Grid>
-                <Grid size={{ xs: 12, md: 4 }}>
-                  <TextField
-                    label="Condiciones"
-                    size="small"
-                    fullWidth
-                    value={practiceForm.conditions_for_practice}
-                    onChange={(e) => setPracticeForm((f) => ({ ...f, conditions_for_practice: e.target.value }))}
-                  />
-                </Grid>
-
-                <Grid size={{ xs: 12 }}>
-                  <TextField
-                    label="Horario"
-                    size="small"
-                    fullWidth
-                    value={practiceForm.schedule}
-                    onChange={(e) => setPracticeForm((f) => ({ ...f, schedule: e.target.value }))}
-                  />
-                </Grid>
-
-                <Grid size={{ xs: 12, md: 6 }}>
-                  <TextField
-                    label="Valoración prácticas"
-                    size="small"
-                    fullWidth
-                    multiline
-                    minRows={2}
-                    value={practiceForm.evaluation}
-                    onChange={(e) => setPracticeForm((f) => ({ ...f, evaluation: e.target.value }))}
-                  />
-                </Grid>
-                <Grid size={{ xs: 12, md: 6 }}>
-                  <TextField
-                    label="Observaciones"
-                    size="small"
-                    fullWidth
-                    multiline
-                    minRows={2}
-                    value={practiceForm.observations}
-                    onChange={(e) => setPracticeForm((f) => ({ ...f, observations: e.target.value }))}
-                  />
-                </Grid>
-
-                <Grid size={{ xs: 12 }}>
-                  <Stack direction="row" spacing={1} justifyContent="flex-end">
-                    <Button variant="outlined" disabled={practiceSaving} onClick={startCreatePractice}>
-                      Nueva práctica
-                    </Button>
-                    <Button
-                      variant="contained"
-                      disabled={practiceSaving || !practiceForm.expediente.trim()}
-                      onClick={savePractice}
-                    >
-                      Guardar
-                    </Button>
-                  </Stack>
-                </Grid>
-              </Grid>
+              <Stack direction="row" justifyContent="space-between" alignItems="center">
+                <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                  Total: {practiceRows.length}
+                </Typography>
+                <Button variant="outlined" onClick={openCreatePracticeForm}>
+                  Nueva práctica
+                </Button>
+              </Stack>
             </Paper>
 
             <Paper variant="outlined" sx={{ borderRadius: 2 }}>
@@ -2672,13 +2789,16 @@ export default function StudentDetailPage() {
                       <TableCell sx={{ whiteSpace: "nowrap" }}>Fin</TableCell>
                       <TableCell sx={{ whiteSpace: "nowrap" }}>Baja</TableCell>
                       <TableCell>Días</TableCell>
-                      <TableCell>Centro</TableCell>
-                      <TableCell align="right">Acciones</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {practiceSorted.map((p) => (
-                      <TableRow key={p.id} hover>
+                      <TableRow
+                        key={p.id}
+                        hover
+                        onClick={() => openViewPracticeForm(p)}
+                        sx={{ cursor: "pointer" }}
+                      >
                         <TableCell>{p.expediente}</TableCell>
                         <TableCell>{p.itinerary_name || p.course_code || "-"}</TableCell>
                         <TableCell>
@@ -2695,26 +2815,11 @@ export default function StudentDetailPage() {
                         <TableCell sx={{ whiteSpace: "nowrap" }}>{formatDateDMY(p.end_date)}</TableCell>
                         <TableCell sx={{ whiteSpace: "nowrap" }}>{formatDateDMY(p.leave_date)}</TableCell>
                         <TableCell>{p.attendance_days ?? "-"}</TableCell>
-                        <TableCell>
-                          <Typography variant="caption" color="text.secondary">
-                            {p.workplace ?? "-"}
-                          </Typography>
-                        </TableCell>
-                        <TableCell align="right">
-                          <Stack direction="row" spacing={1} justifyContent="flex-end">
-                            <Button size="small" onClick={() => startEditPractice(p)}>
-                              Editar
-                            </Button>
-                            <Button size="small" color="error" onClick={() => deletePractice(p.id)}>
-                              Eliminar
-                            </Button>
-                          </Stack>
-                        </TableCell>
                       </TableRow>
                     ))}
                     {practiceRows.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={11} align="center" sx={{ py: 4, color: "text.secondary" }}>
+                        <TableCell colSpan={9} align="center" sx={{ py: 4, color: "text.secondary" }}>
                           No hay prácticas
                         </TableCell>
                       </TableRow>
@@ -2726,7 +2831,460 @@ export default function StudentDetailPage() {
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setPracticesOpen(false)}>Cerrar</Button>
+          <Button onClick={closePracticesDialog}>Cerrar</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Prácticas: formulario en popup independiente */}
+      <Dialog open={practiceFormOpen} onClose={closePracticeForm} fullWidth maxWidth="xl">
+        <DialogTitle>
+          {practiceFormMode === "create"
+            ? "Nueva práctica"
+            : practiceFormMode === "edit"
+              ? "Editar práctica"
+              : practiceFormMode === "delete"
+                ? "Eliminar práctica"
+                : "Detalle de práctica"}
+        </DialogTitle>
+        <DialogContent dividers>
+          {practiceFormMode === "view" && (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              Vista de práctica en modo solo lectura.
+            </Alert>
+          )}
+          {practiceFormMode === "delete" && (
+            <Alert severity="warning" sx={{ mb: 2 }}>
+              Revisa los datos y confirma la eliminación de esta práctica.
+            </Alert>
+          )}
+          <Box
+            component="fieldset"
+            disabled={practiceSaving || practiceFormMode === "view" || practiceFormMode === "delete"}
+            sx={{ border: 0, p: 0, m: 0, minWidth: 0 }}
+          >
+            <Grid container spacing={2}>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <TextField
+                  select
+                  label="Expediente"
+                  size="small"
+                  fullWidth
+                  value={practiceForm.expediente}
+                  onChange={(e) => setPracticeForm((f) => ({ ...f, expediente: e.target.value }))}
+                >
+                  <MenuItem value="">
+                    <em>Selecciona expediente</em>
+                  </MenuItem>
+                  {enrolledCourses.map((c) => (
+                    <MenuItem key={c.expediente} value={c.expediente}>
+                      {`${c.expediente} · ${c.itinerary_name || c.course_code}`}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              </Grid>
+              <Grid size={{ xs: 12, md: 3 }}>
+                <TextField
+                  select
+                  label="¿Hace prácticas?"
+                  size="small"
+                  fullWidth
+                  value={practiceForm.does_practices}
+                  onChange={(e) =>
+                    setPracticeForm((f) => ({
+                      ...f,
+                      does_practices: e.target.value as (typeof PRACTICE_STATE_OPTIONS)[number],
+                    }))
+                  }
+                >
+                  {PRACTICE_STATE_OPTIONS.map((opt) => (
+                    <MenuItem key={opt} value={opt}>
+                      {practiceStateText(opt)}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              </Grid>
+              <Grid size={{ xs: 12, md: 3 }}>
+                <TextField
+                  select
+                  label="Estado prácticas"
+                  size="small"
+                  fullWidth
+                  value={practiceForm.practice_status}
+                  onChange={(e) =>
+                    setPracticeForm((f) => ({
+                      ...f,
+                      practice_status: e.target.value as (typeof PRACTICE_STATUS_OPTIONS)[number],
+                    }))
+                  }
+                >
+                  <MenuItem value="">
+                    <em>—</em>
+                  </MenuItem>
+                  {PRACTICE_STATUS_OPTIONS.filter(Boolean).map((opt) => (
+                    <MenuItem key={opt} value={opt}>
+                      {practiceStatusText(opt)}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              </Grid>
+
+              <Grid size={{ xs: 12, md: 6 }}>
+                <TextField
+                  select
+                  label="Nombre comercial de empresa"
+                  size="small"
+                  fullWidth
+                  required
+                  value={practiceForm.company_name}
+                  onChange={(e) =>
+                    setPracticeForm((f) => ({
+                      ...f,
+                      company_name: e.target.value,
+                      company_fiscal_name: "",
+                      company_id: "",
+                      practice_center_sector: "",
+                      practice_center_id: "",
+                      workplace: "",
+                    }))
+                  }
+                >
+                  <MenuItem value="">
+                    <em>Selecciona nombre comercial</em>
+                  </MenuItem>
+                  {practiceCompanyNameOptions.map((nameOption) => (
+                    <MenuItem key={nameOption} value={nameOption}>
+                      {nameOption}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <TextField
+                  select
+                  label="Nombre fiscal de empresa"
+                  size="small"
+                  fullWidth
+                  required
+                  disabled={!practiceForm.company_name}
+                  value={practiceForm.company_fiscal_name}
+                  onChange={(e) => {
+                    const nextFiscalName = e.target.value;
+                    const matchedCompany = practiceCompaniesForSelectedName.find(
+                      (c) => (c.fiscal_name ?? "").trim() === nextFiscalName
+                    );
+                    setPracticeForm((f) => ({
+                      ...f,
+                      company_fiscal_name: nextFiscalName,
+                      company_id: matchedCompany ? String(matchedCompany.id) : "",
+                      practice_center_sector: "",
+                      practice_center_id: "",
+                      workplace: "",
+                    }));
+                  }}
+                  helperText={
+                    !practiceForm.company_name
+                      ? "Selecciona primero el nombre comercial."
+                      : practiceFiscalNameOptions.length === 1
+                        ? "Seleccionado automáticamente porque solo existe un nombre fiscal."
+                        : "Selecciona el nombre fiscal asociado al nombre comercial."
+                  }
+                >
+                  <MenuItem value="">
+                    <em>Selecciona nombre fiscal</em>
+                  </MenuItem>
+                  {practiceFiscalNameOptions.map((fiscalNameOption) => (
+                    <MenuItem key={fiscalNameOption} value={fiscalNameOption}>
+                      {fiscalNameOption}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              </Grid>
+
+              {selectedPracticeCompanyId && practiceCompanyCentersLoading && (
+                <Grid size={{ xs: 12 }}>
+                  <TextField
+                    label="Dirección de centro de prácticas"
+                    size="small"
+                    fullWidth
+                    value=""
+                    placeholder="Cargando direcciones..."
+                    InputProps={{ readOnly: true }}
+                  />
+                </Grid>
+              )}
+
+              {selectedPracticeCompanyId &&
+                !practiceCompanyCentersLoading &&
+                practiceCompanyCenters.length > 0 &&
+                selectedPracticeCompanyHasComplexLayout && (
+                  <>
+                    <Grid size={{ xs: 12, md: 4 }}>
+                      <Autocomplete
+                        options={practiceCenterSectorOptions}
+                        value={practiceForm.practice_center_sector || null}
+                        onChange={(_, value) =>
+                          setPracticeForm((f) => ({
+                            ...f,
+                            practice_center_sector: value ?? "",
+                            practice_center_id: "",
+                            workplace: "",
+                          }))
+                        }
+                        renderInput={(params) => (
+                          <TextField
+                            {...params}
+                            label="Sector (centro de prácticas)"
+                            size="small"
+                            required
+                            fullWidth
+                          />
+                        )}
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 12, md: 4 }}>
+                      <TextField
+                        select
+                        label="Centro de prácticas"
+                        size="small"
+                        fullWidth
+                        required
+                        disabled={!practiceForm.practice_center_sector}
+                        value={practiceForm.practice_center_id}
+                        onChange={(e) => {
+                          const centerId = e.target.value;
+                          const selectedCenter = practiceCenterOptionsForSelectedSector.find(
+                            (pc) => String(pc.id) === centerId
+                          );
+                          setPracticeForm((f) => ({
+                            ...f,
+                            practice_center_id: centerId,
+                            workplace: selectedCenter?.address ?? "",
+                          }));
+                        }}
+                      >
+                        <MenuItem value="">
+                          <em>Selecciona centro</em>
+                        </MenuItem>
+                        {practiceCenterOptionsForSelectedSector.map((pc) => (
+                          <MenuItem key={pc.id} value={String(pc.id)}>
+                            {pc.center}
+                          </MenuItem>
+                        ))}
+                      </TextField>
+                    </Grid>
+                    <Grid size={{ xs: 12, md: 4 }}>
+                      <TextField
+                        label="Dirección de centro de prácticas"
+                        size="small"
+                        fullWidth
+                        value={practiceForm.workplace}
+                        InputProps={{ readOnly: true }}
+                      />
+                    </Grid>
+                  </>
+                )}
+
+              {selectedPracticeCompanyId &&
+                !practiceCompanyCentersLoading &&
+                practiceCompanyCenters.length > 0 &&
+                !selectedPracticeCompanyHasComplexLayout && (
+                  <Grid size={{ xs: 12 }}>
+                    <TextField
+                      select
+                      label="Dirección de centro de prácticas"
+                      size="small"
+                      fullWidth
+                      required
+                      value={practiceForm.practice_center_id}
+                      onChange={(e) => {
+                        const centerId = e.target.value;
+                        const selectedCenter = practiceCenterAddressOptions.find(
+                          (pc) => String(pc.id) === centerId
+                        );
+                        setPracticeForm((f) => ({
+                          ...f,
+                          practice_center_id: centerId,
+                          workplace: selectedCenter?.address ?? "",
+                        }));
+                      }}
+                    >
+                      <MenuItem value="">
+                        <em>Selecciona dirección</em>
+                      </MenuItem>
+                      {practiceCenterAddressOptions.map((pc) => (
+                        <MenuItem key={pc.id} value={String(pc.id)}>
+                          {pc.address}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  </Grid>
+                )}
+
+              {selectedPracticeCompanyId &&
+                !practiceCompanyCentersLoading &&
+                practiceCompanyCenters.length === 0 && (
+                  <Grid size={{ xs: 12 }}>
+                    <TextField
+                      label="Centro de prácticas"
+                      size="small"
+                      fullWidth
+                      value={practiceForm.workplace}
+                      onChange={(e) => setPracticeForm((f) => ({ ...f, workplace: e.target.value }))}
+                      helperText="Esta empresa no tiene direcciones cargadas en el catálogo."
+                    />
+                  </Grid>
+                )}
+
+              <Grid size={{ xs: 12, md: 4 }}>
+                <DateTextField
+                  label="Inicio"
+                  size="small"
+                  fullWidth
+                  value={practiceForm.start_date}
+                  onChange={(nextIso) => setPracticeForm((f) => ({ ...f, start_date: nextIso }))}
+                  placeholder="dd/mm/aaaa"
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 4 }}>
+                <DateTextField
+                  label="Fin"
+                  size="small"
+                  fullWidth
+                  value={practiceForm.end_date}
+                  onChange={(nextIso) => setPracticeForm((f) => ({ ...f, end_date: nextIso }))}
+                  placeholder="dd/mm/aaaa"
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 4 }}>
+                <DateTextField
+                  label="Fecha baja"
+                  size="small"
+                  fullWidth
+                  value={practiceForm.leave_date}
+                  onChange={(nextIso) => setPracticeForm((f) => ({ ...f, leave_date: nextIso }))}
+                  placeholder="dd/mm/aaaa"
+                />
+              </Grid>
+
+              <Grid size={{ xs: 12, md: 4 }}>
+                <TextField
+                  label="Nº días asistencia"
+                  type="number"
+                  size="small"
+                  fullWidth
+                  value={practiceForm.attendance_days}
+                  onChange={(e) => setPracticeForm((f) => ({ ...f, attendance_days: e.target.value }))}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 4 }}>
+                <TextField
+                  label="Turno"
+                  size="small"
+                  fullWidth
+                  value={practiceForm.practice_shift}
+                  onChange={(e) => setPracticeForm((f) => ({ ...f, practice_shift: e.target.value }))}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 4 }}>
+                <TextField
+                  label="Condiciones"
+                  size="small"
+                  fullWidth
+                  value={practiceForm.conditions_for_practice}
+                  onChange={(e) => setPracticeForm((f) => ({ ...f, conditions_for_practice: e.target.value }))}
+                />
+              </Grid>
+
+              <Grid size={{ xs: 12 }}>
+                <TextField
+                  label="Horario"
+                  size="small"
+                  fullWidth
+                  value={practiceForm.schedule}
+                  onChange={(e) => setPracticeForm((f) => ({ ...f, schedule: e.target.value }))}
+                />
+              </Grid>
+
+              <Grid size={{ xs: 12, md: 6 }}>
+                <TextField
+                  label="Valoración prácticas"
+                  size="small"
+                  fullWidth
+                  multiline
+                  minRows={2}
+                  value={practiceForm.evaluation}
+                  onChange={(e) => setPracticeForm((f) => ({ ...f, evaluation: e.target.value }))}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <TextField
+                  label="Observaciones"
+                  size="small"
+                  fullWidth
+                  multiline
+                  minRows={2}
+                  value={practiceForm.observations}
+                  onChange={(e) => setPracticeForm((f) => ({ ...f, observations: e.target.value }))}
+                />
+              </Grid>
+            </Grid>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          {practiceFormMode === "view" && (
+            <>
+              <Button onClick={closePracticeForm}>Cerrar</Button>
+              <Button variant="outlined" onClick={() => setPracticeFormMode("edit")}>
+                Editar
+              </Button>
+              {practiceForm.id && (
+                <Button variant="contained" color="error" onClick={() => setPracticeFormMode("delete")}>
+                  Eliminar
+                </Button>
+              )}
+            </>
+          )}
+          {practiceFormMode === "delete" && (
+            <>
+              <Button variant="outlined" onClick={closePracticeForm} disabled={practiceSaving}>
+                Cancelar
+              </Button>
+              <Button
+                variant="contained"
+                color="error"
+                disabled={practiceSaving || !practiceForm.id}
+                onClick={() => {
+                  if (practiceForm.id) void deletePractice(practiceForm.id);
+                }}
+              >
+                Eliminar práctica
+              </Button>
+            </>
+          )}
+          {(practiceFormMode === "create" || practiceFormMode === "edit") && (
+            <>
+              <Button variant="outlined" disabled={practiceSaving} onClick={closePracticeForm}>
+                Cancelar
+              </Button>
+              {practiceFormMode === "edit" && practiceForm.id && (
+                <Button
+                  variant="outlined"
+                  color="error"
+                  disabled={practiceSaving}
+                  onClick={() => setPracticeFormMode("delete")}
+                >
+                  Eliminar
+                </Button>
+              )}
+              <Button
+                variant="contained"
+                disabled={practiceSaving || !practiceForm.expediente.trim()}
+                onClick={savePractice}
+              >
+                Guardar
+              </Button>
+            </>
+          )}
         </DialogActions>
       </Dialog>
 

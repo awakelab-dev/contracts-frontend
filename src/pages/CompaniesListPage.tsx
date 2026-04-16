@@ -1,16 +1,18 @@
 import { useMemo, useState, useEffect } from "react";
 import {
   Alert,
+  Autocomplete,
   Box,
   Button,
+  Checkbox,
   Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
+  FormControlLabel,
   Grid,
   InputAdornment,
-  MenuItem,
   Paper,
   Stack,
   Table,
@@ -44,6 +46,24 @@ function toNull(v: string) {
   return s ? s : null;
 }
 
+function toUpper(v: string) {
+  return v.trim().toLocaleUpperCase("es-ES");
+}
+
+function toNullUpper(v: string) {
+  const s = toUpper(v);
+  return s ? s : null;
+}
+
+function toLower(v: string) {
+  return v.trim().toLocaleLowerCase("es-ES");
+}
+
+function toNullLower(v: string) {
+  const s = toLower(v);
+  return s ? s : null;
+}
+
 function sectorLabel(company: Company) {
   return company.sector_name ?? company.sector ?? null;
 }
@@ -51,13 +71,14 @@ function sectorLabel(company: Company) {
 const EMPTY_CREATE_FORM = {
   name: "",
   fiscal_name: "",
-  nif: "",
-  sector_id: "",
+  cif: "",
+  sector_name: "",
   company_email: "",
   company_phone: "",
   contact_name: "",
   contact_email: "",
   contact_phone: "",
+  has_complex_practice_centers: false,
   notes: "",
 };
 
@@ -122,11 +143,15 @@ export default function CompaniesListPage() {
   }
 
   async function createCompany() {
-    const name = createForm.name.trim();
+    const name = toUpper(createForm.name);
     if (!name) {
       setCreateError("El nombre es obligatorio");
       return;
     }
+    const sectorName = toUpper(createForm.sector_name);
+    const matchedSector = sectorName
+      ? sectors.find((s) => s.sector_name.trim().toLocaleUpperCase("es-ES") === sectorName)
+      : null;
 
     try {
       setCreateSaving(true);
@@ -134,14 +159,16 @@ export default function CompaniesListPage() {
 
       const payload = {
         name,
-        fiscal_name: toNull(createForm.fiscal_name),
-        nif: toNull(createForm.nif),
-        sector_id: createForm.sector_id ? Number(createForm.sector_id) : null,
-        company_email: toNull(createForm.company_email),
+        fiscal_name: toNullUpper(createForm.fiscal_name),
+        cif: toNull(createForm.cif),
+        sector_id: matchedSector?.id ?? null,
+        sector_name: sectorName || null,
+        company_email: toNullLower(createForm.company_email),
         company_phone: toNull(createForm.company_phone),
-        contact_name: toNull(createForm.contact_name),
-        contact_email: toNull(createForm.contact_email),
+        contact_name: toNullUpper(createForm.contact_name),
+        contact_email: toNullLower(createForm.contact_email),
         contact_phone: toNull(createForm.contact_phone),
+        has_complex_practice_centers: createForm.has_complex_practice_centers,
         notes: toNull(createForm.notes),
       };
 
@@ -177,7 +204,7 @@ export default function CompaniesListPage() {
     if (!term) return list;
     return list.filter((c) =>
       [
-        c.nif ?? "",
+        c.cif ?? "",
         c.name,
         c.fiscal_name ?? "",
         c.sectorResolved,
@@ -188,6 +215,26 @@ export default function CompaniesListPage() {
       ].some((f) => f.toLowerCase().includes(term))
     );
   }, [q, companies, openByCompany]);
+
+  const companyNameOptions = useMemo(() => {
+    return Array.from(
+      new Set(
+        companies
+          .map((c) => c.name.trim())
+          .filter((name) => name.length > 0)
+      )
+    ).sort((a, b) => a.localeCompare(b, "es", { sensitivity: "base" }));
+  }, [companies]);
+
+  const sectorOptions = useMemo(() => {
+    return Array.from(
+      new Set(
+        sectors
+          .map((s) => s.sector_name.trim())
+          .filter((sector) => sector.length > 0)
+      )
+    ).sort((a, b) => a.localeCompare(b, "es", { sensitivity: "base" }));
+  }, [sectors]);
 
   useEffect(() => {
     // Cuando cambia el filtro, volvemos a la primera página.
@@ -274,7 +321,7 @@ export default function CompaniesListPage() {
                         {c.name}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
-                        Código: {c.id} · NIF: {c.nif ?? "-"}
+                        Código: {c.id} · CIF: {c.cif ?? "-"}
                       </Typography>
                       {!!c.fiscal_name && (
                         <Typography variant="caption" color="text.secondary">
@@ -339,12 +386,22 @@ export default function CompaniesListPage() {
 
             <Grid container spacing={2}>
               <Grid size={{ xs: 12, md: 6 }}>
-                <TextField
-                  label="Nombre comercial"
+                <Autocomplete
+                  freeSolo
+                  options={companyNameOptions}
                   value={createForm.name}
-                  onChange={(e) => setCreateForm((p) => ({ ...p, name: e.target.value }))}
-                  required
-                  fullWidth
+                  onInputChange={(_, value) => setCreateForm((p) => ({ ...p, name: value }))}
+                  onChange={(_, value) =>
+                    setCreateForm((p) => ({ ...p, name: typeof value === "string" ? value : "" }))
+                  }
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="Nombre comercial"
+                      required
+                      fullWidth
+                    />
+                  )}
                 />
               </Grid>
               <Grid size={{ xs: 12, md: 6 }}>
@@ -357,29 +414,27 @@ export default function CompaniesListPage() {
               </Grid>
               <Grid size={{ xs: 12, md: 4 }}>
                 <TextField
-                  label="NIF / CIF"
-                  value={createForm.nif}
-                  onChange={(e) => setCreateForm((p) => ({ ...p, nif: e.target.value }))}
+                  label="CIF"
+                  value={createForm.cif}
+                  onChange={(e) => setCreateForm((p) => ({ ...p, cif: e.target.value }))}
                   fullWidth
                 />
               </Grid>
               <Grid size={{ xs: 12, md: 4 }}>
-                <TextField
-                  select
-                  label="Sector"
-                  value={createForm.sector_id}
-                  onChange={(e) => setCreateForm((p) => ({ ...p, sector_id: e.target.value }))}
-                  fullWidth
-                >
-                  <MenuItem value="">
-                    <em>Sin sector</em>
-                  </MenuItem>
-                  {sectors.map((s) => (
-                    <MenuItem key={s.id} value={String(s.id)}>
-                      {s.sector_name}
-                    </MenuItem>
-                  ))}
-                </TextField>
+                <Autocomplete
+                  freeSolo
+                  options={sectorOptions}
+                  value={createForm.sector_name}
+                  onInputChange={(_, value) => setCreateForm((p) => ({ ...p, sector_name: value }))}
+                  onChange={(_, value) => setCreateForm((p) => ({ ...p, sector_name: value ?? "" }))}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="Sector"
+                      fullWidth
+                    />
+                  )}
+                />
               </Grid>
               <Grid size={{ xs: 12, md: 4 }}>
                 <TextField
@@ -419,6 +474,19 @@ export default function CompaniesListPage() {
                   value={createForm.contact_phone}
                   onChange={(e) => setCreateForm((p) => ({ ...p, contact_phone: e.target.value }))}
                   fullWidth
+                />
+              </Grid>
+              <Grid size={{ xs: 12 }}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={createForm.has_complex_practice_centers}
+                      onChange={(e) =>
+                        setCreateForm((p) => ({ ...p, has_complex_practice_centers: e.target.checked }))
+                      }
+                    />
+                  }
+                  label="Estructura compleja para Dirección de Centro de Prácticas"
                 />
               </Grid>
 
