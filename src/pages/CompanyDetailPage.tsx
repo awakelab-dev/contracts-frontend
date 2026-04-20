@@ -22,6 +22,7 @@ import api from "../lib/api";
 import type { Company, CompanyPracticeCenter, CompanySector, Vacancy } from "../types";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import TransactionHistoryPanel from "../components/TransactionHistoryPanel";
 
 function toNull(v: string) {
   const s = v.trim();
@@ -442,66 +443,73 @@ export default function CompanyDetailPage() {
         </Stack>
       </Paper>
 
-      <Paper sx={{ p: 2, mt: 2 }}>
-        <Stack spacing={1.5}>
-          <Stack
-            direction={{ xs: "column", sm: "row" }}
-            spacing={1}
-            justifyContent="space-between"
-            alignItems={{ xs: "flex-start", sm: "center" }}
-          >
-            <Typography variant="h6">Dirección de Centro de Prácticas</Typography>
-            <Button variant="outlined" onClick={openCreatePracticeCenter}>
-              Agregar
-            </Button>
-          </Stack>
+      <Grid container spacing={2} sx={{ mt: 0 }}>
+        <Grid size={{ xs: 12, md: 6 }}>
+          <Paper sx={{ p: 2, mt: 2 }}>
+            <Stack spacing={1.5}>
+              <Stack
+                direction={{ xs: "column", sm: "row" }}
+                spacing={1}
+                justifyContent="space-between"
+                alignItems={{ xs: "flex-start", sm: "center" }}
+              >
+                <Typography variant="h6">Dirección de Centro de Prácticas</Typography>
+                <Button variant="outlined" onClick={openCreatePracticeCenter}>
+                  Agregar
+                </Button>
+              </Stack>
 
-          {practiceCenters.length === 0 ? (
-            <Typography color="text.secondary">No hay direcciones de prácticas registradas.</Typography>
-          ) : (
-            <Stack spacing={1}>
-              {practiceCenters.map((practiceCenter) => (
-                <Paper key={practiceCenter.id} variant="outlined" sx={{ p: 1.5 }}>
-                  <Stack
-                    direction={{ xs: "column", md: "row" }}
-                    spacing={1}
-                    justifyContent="space-between"
-                    alignItems={{ xs: "flex-start", md: "center" }}
-                  >
-                    <Stack spacing={0.4}>
-                      {hasComplexPracticeCenters ? (
-                        <>
-                          <Typography variant="body2">
-                            <strong>Sector:</strong> {practiceCenter.sector ?? "-"}
-                          </Typography>
-                          <Typography variant="body2">
-                            <strong>Centro:</strong> {practiceCenter.center ?? "-"}
-                          </Typography>
-                          <Typography variant="body2">
-                            <strong>Dirección:</strong> {practiceCenter.address ?? "-"}
-                          </Typography>
-                        </>
-                      ) : (
-                        <Typography variant="body2">
-                          <strong>Dirección:</strong> {practiceCenter.address ?? "-"}
-                        </Typography>
-                      )}
-                    </Stack>
-                    <Stack direction="row" spacing={1}>
-                      <Button size="small" onClick={() => openEditPracticeCenter(practiceCenter)}>
-                        Editar
-                      </Button>
-                      <Button size="small" color="error" onClick={() => deletePracticeCenter(practiceCenter.id)}>
-                        Eliminar
-                      </Button>
-                    </Stack>
-                  </Stack>
-                </Paper>
-              ))}
+              {practiceCenters.length === 0 ? (
+                <Typography color="text.secondary">No hay direcciones de prácticas registradas.</Typography>
+              ) : (
+                <Stack spacing={1}>
+                  {practiceCenters.map((practiceCenter) => (
+                    <Paper key={practiceCenter.id} variant="outlined" sx={{ p: 1.5 }}>
+                      <Stack
+                        direction={{ xs: "column", md: "row" }}
+                        spacing={1}
+                        justifyContent="space-between"
+                        alignItems={{ xs: "flex-start", md: "center" }}
+                      >
+                        <Stack spacing={0.4}>
+                          {hasComplexPracticeCenters ? (
+                            <>
+                              <Typography variant="body2">
+                                <strong>Sector:</strong> {practiceCenter.sector ?? "-"}
+                              </Typography>
+                              <Typography variant="body2">
+                                <strong>Centro:</strong> {practiceCenter.center ?? "-"}
+                              </Typography>
+                              <Typography variant="body2">
+                                <strong>Dirección:</strong> {practiceCenter.address ?? "-"}
+                              </Typography>
+                            </>
+                          ) : (
+                            <Typography variant="body2">
+                              <strong>Dirección:</strong> {practiceCenter.address ?? "-"}
+                            </Typography>
+                          )}
+                        </Stack>
+                        <Stack direction="row" spacing={1}>
+                          <Button size="small" onClick={() => openEditPracticeCenter(practiceCenter)}>
+                            Editar
+                          </Button>
+                          <Button size="small" color="error" onClick={() => deletePracticeCenter(practiceCenter.id)}>
+                            Eliminar
+                          </Button>
+                        </Stack>
+                      </Stack>
+                    </Paper>
+                  ))}
+                </Stack>
+              )}
             </Stack>
-          )}
-        </Stack>
-      </Paper>
+          </Paper>
+        </Grid>
+        <Grid size={{ xs: 12, md: 6 }}>
+          <TransactionHistoryPanel companyId={company.id} />
+        </Grid>
+      </Grid>
 
       <Dialog open={editOpen} onClose={() => setEditOpen(false)} fullWidth maxWidth="md">
         <DialogTitle>Editar empresa</DialogTitle>
