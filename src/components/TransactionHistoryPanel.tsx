@@ -29,6 +29,7 @@ export default function TransactionHistoryPanel({ companyId }: Props) {
   const [actionOk, setActionOk] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [editingRowId, setEditingRowId] = useState<number | null>(null);
   const [description, setDescription] = useState("");
 
   async function loadHistory() {
@@ -79,14 +80,21 @@ export default function TransactionHistoryPanel({ companyId }: Props) {
       setSaving(true);
       setActionError(null);
       setActionOk(null);
-      await api.post("/transaction-history", {
-        company_id: companyId,
-        description: cleanDescription,
-      });
+      if (editingRowId) {
+        await api.put(`/transaction-history/${companyId}/${editingRowId}`, {
+          description: cleanDescription,
+        });
+      } else {
+        await api.post("/transaction-history", {
+          company_id: companyId,
+          description: cleanDescription,
+        });
+      }
       setDescription("");
+      setEditingRowId(null);
       setDialogOpen(false);
       await loadHistory();
-      setActionOk("Transacción agregada");
+      setActionOk(editingRowId ? "Transacción actualizada" : "Transacción agregada");
     } catch (e: any) {
       setActionError(
         e?.response?.data?.error ||
@@ -96,6 +104,34 @@ export default function TransactionHistoryPanel({ companyId }: Props) {
       );
     } finally {
       setSaving(false);
+    }
+  }
+
+  function openEditTransaction(row: TransactionHistoryRow) {
+    setActionError(null);
+    setActionOk(null);
+    setEditingRowId(row.id);
+    setDescription(row.description || "");
+    setDialogOpen(true);
+  }
+
+  async function deleteTransaction(rowId: number) {
+    const ok = window.confirm("¿Eliminar esta transacción?");
+    if (!ok) return;
+
+    try {
+      setActionError(null);
+      setActionOk(null);
+      await api.delete(`/transaction-history/${companyId}/${rowId}`);
+      await loadHistory();
+      setActionOk("Transacción eliminada");
+    } catch (e: any) {
+      setActionError(
+        e?.response?.data?.error ||
+          e?.response?.data?.message ||
+          e?.message ||
+          "Error al eliminar transacción"
+      );
     }
   }
 
@@ -114,6 +150,7 @@ export default function TransactionHistoryPanel({ companyId }: Props) {
             onClick={() => {
               setActionError(null);
               setActionOk(null);
+              setEditingRowId(null);
               setDescription("");
               setDialogOpen(true);
             }}
@@ -143,16 +180,31 @@ export default function TransactionHistoryPanel({ companyId }: Props) {
           <Stack spacing={1}>
             {rows.map((row) => (
               <Paper key={row.id} variant="outlined" sx={{ p: 1.5 }}>
-                <Stack spacing={0.4}>
-                  <Typography variant="body2">
-                    <strong>Usuario:</strong> {row.user || "-"}
-                  </Typography>
-                  <Typography variant="body2">
-                    <strong>Fecha:</strong> {formatDateTime(row.created_at)}
-                  </Typography>
-                  <Typography variant="body2">
-                    <strong>Descripción:</strong> {row.description || "-"}
-                  </Typography>
+                <Stack
+                  direction={{ xs: "column", md: "row" }}
+                  spacing={1}
+                  justifyContent="space-between"
+                  alignItems={{ xs: "flex-start", md: "center" }}
+                >
+                  <Stack spacing={0.4}>
+                    <Typography variant="body2">
+                      <strong>Usuario:</strong> {row.user || "-"}
+                    </Typography>
+                    <Typography variant="body2">
+                      <strong>Fecha:</strong> {formatDateTime(row.created_at)}
+                    </Typography>
+                    <Typography variant="body2">
+                      <strong>Descripción:</strong> {row.description || "-"}
+                    </Typography>
+                  </Stack>
+                  <Stack direction="row" spacing={1}>
+                    <Button size="small" onClick={() => openEditTransaction(row)}>
+                      Editar
+                    </Button>
+                    <Button size="small" color="error" onClick={() => deleteTransaction(row.id)}>
+                      Eliminar
+                    </Button>
+                  </Stack>
                 </Stack>
               </Paper>
             ))}
@@ -161,7 +213,7 @@ export default function TransactionHistoryPanel({ companyId }: Props) {
       </Stack>
 
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Agregar transacción</DialogTitle>
+        <DialogTitle>{editingRowId ? "Editar transacción" : "Agregar transacción"}</DialogTitle>
         <DialogContent dividers>
           <Box sx={{ pt: 0.5 }}>
             <TextField
