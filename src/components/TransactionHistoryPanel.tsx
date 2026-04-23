@@ -144,7 +144,7 @@ export default function TransactionHistoryPanel({ companyId }: Props) {
           justifyContent="space-between"
           alignItems={{ xs: "flex-start", sm: "center" }}
         >
-          <Typography variant="h6">Historial de Transacciones</Typography>
+          <Typography variant="h6">Historial de Obbservaciones</Typography>
           <Button
             variant="outlined"
             onClick={() => {
@@ -175,7 +175,7 @@ export default function TransactionHistoryPanel({ companyId }: Props) {
         ) : error ? (
           <Alert severity="error">{error}</Alert>
         ) : rows.length === 0 ? (
-          <Typography color="text.secondary">No hay transacciones registradas.</Typography>
+          <Typography color="text.secondary">No hay observaciones registradas.</Typography>
         ) : (
           <Stack spacing={1}>
             {rows.map((row) => (

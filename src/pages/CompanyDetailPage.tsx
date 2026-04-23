@@ -23,6 +23,8 @@ import type { Company, CompanyPracticeCenter, CompanySector, Vacancy } from "../
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import TransactionHistoryPanel from "../components/TransactionHistoryPanel";
+import DateTextField from "../components/DateTextField";
+import { formatDateDMY } from "../utils/date";
 
 function toNull(v: string) {
   const s = v.trim();
@@ -51,6 +53,20 @@ function sectorLabel(company: Company) {
   return company.sector_name ?? company.sector ?? null;
 }
 
+function fmtDate(v: unknown): string {
+  if (!v) return "";
+  if (v instanceof Date) return v.toISOString().slice(0, 10);
+  const s = String(v);
+  return s.length >= 10 ? s.slice(0, 10) : s;
+}
+
+function agreementSignedToBool(value: unknown): boolean {
+  const normalized = String(value ?? "")
+    .trim()
+    .toUpperCase();
+  return normalized === "SI" || normalized === "SÍ" || normalized === "TRUE" || normalized === "1";
+}
+
 const EMPTY_EDIT_FORM = {
   name: "",
   fiscal_name: "",
@@ -61,6 +77,8 @@ const EMPTY_EDIT_FORM = {
   contact_name: "",
   contact_email: "",
   contact_phone: "",
+  contact_date: "",
+  agreement_signed: false,
   has_complex_practice_centers: false,
   notes: "",
 };
@@ -201,6 +219,8 @@ export default function CompanyDetailPage() {
       contact_name: company.contact_name ?? "",
       contact_email: company.contact_email ?? "",
       contact_phone: company.contact_phone ?? "",
+      contact_date: fmtDate(company.contact_date),
+      agreement_signed: agreementSignedToBool(company.agreement_signed),
       has_complex_practice_centers: Boolean(Number(company.has_complex_practice_centers ?? 0)),
       notes: company.notes ?? "",
     });
@@ -236,6 +256,8 @@ export default function CompanyDetailPage() {
         contact_name: toNullUpper(editForm.contact_name),
         contact_email: toNullLower(editForm.contact_email),
         contact_phone: toNull(editForm.contact_phone),
+        contact_date: editForm.contact_date || null,
+        agreement_signed: editForm.agreement_signed,
         has_complex_practice_centers: editForm.has_complex_practice_centers,
         notes: toNull(editForm.notes),
       };
@@ -435,6 +457,12 @@ export default function CompanyDetailPage() {
             <strong>Email contacto:</strong> {company.contact_email ?? "-"}
           </Typography>
           <Typography>
+            <strong>Fecha de contacto:</strong> {formatDateDMY(company.contact_date)}
+          </Typography>
+          <Typography>
+            <strong>Ha firmado convenio?:</strong> {agreementSignedToBool(company.agreement_signed) ? "Sí" : "No"}
+          </Typography>
+          <Typography>
             <strong>Vacantes abiertas:</strong> {openCount}
           </Typography>
           <Typography>
@@ -612,6 +640,28 @@ export default function CompanyDetailPage() {
                   value={editForm.contact_phone}
                   onChange={(e) => setEditForm((p) => ({ ...p, contact_phone: e.target.value }))}
                   fullWidth
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 4 }}>
+                <DateTextField
+                  label="Fecha de contacto"
+                  value={editForm.contact_date}
+                  onChange={(nextIso) => setEditForm((p) => ({ ...p, contact_date: nextIso }))}
+                  fullWidth
+                  placeholder="dd/mm/aaaa"
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 4 }}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={editForm.agreement_signed}
+                      onChange={(e) =>
+                        setEditForm((p) => ({ ...p, agreement_signed: e.target.checked }))
+                      }
+                    />
+                  }
+                  label="Ha firmado convenio?"
                 />
               </Grid>
               <Grid size={{ xs: 12 }}>

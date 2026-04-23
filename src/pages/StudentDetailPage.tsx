@@ -34,9 +34,11 @@ import { calculateAgeFromBirthDate, formatDateDMY } from "../utils/date";
 import DateTextField from "../components/DateTextField";
 
 type EnrolledItineraryCourse = {
+  original_expediente?: string;
   expediente: string;
   course_code: string;
   dni_nie: string;
+  effective_start_date?: string | null;
   leave_date?: string | null;
   leave_reason?: string | null;
   leave_notification?: string | null;
@@ -72,6 +74,8 @@ type PracticeRow = {
   company_name?: string | null;
   company_name_resolved?: string | null;
   workplace?: string | null;
+  tutor_emha?: string | null;
+  tutor_company?: string | null;
   does_practices?: string | null;
   conditions_for_practice?: string | null;
   practice_shift?: string | null;
@@ -106,11 +110,23 @@ type MatchingVacancyApiRow = Vacancy & {
   matched_topics_count: number;
 };
 
+type CourseItineraryCatalogRow = {
+  course_code: string;
+  itinerary_name: string;
+  formation_start_date?: string | null;
+  formation_end_date?: string | null;
+  formation_schedule?: string | null;
+  company?: string | null;
+  teacher?: string | null;
+};
+
 type EnrolledCourseForm = {
+  original_expediente: string;
   expediente: string;
   course_code: string;
   itinerary_name: string;
   formation_start_date: string;
+  effective_start_date: string;
   formation_end_date: string;
   formation_schedule: string;
   company: string;
@@ -151,6 +167,13 @@ const LEAVE_NOTIFICATION_OPTIONS: Array<EnrolledCourseForm["leave_notification"]
   "FIRMADA",
   "EXPULSION",
 ];
+const TIC_OPTIONS = ["SI", "NO"] as const;
+const STATUS_LABORAL_OPTIONS = [
+  "",
+  "Buscando empleo",
+  "Buscando mejorar empleo",
+  "Sin buscar empleo",
+] as const;
 const PRACTICE_STATE_OPTIONS = ["SI", "NO", "INSERCION", "ACTUALIZAR"] as const;
 const PRACTICE_STATUS_OPTIONS = [
   "",
@@ -162,6 +185,7 @@ const PRACTICE_STATUS_OPTIONS = [
 ] as const;
 
 type InvitationFormMode = "create" | "edit";
+type EnrolledCourseFormMode = "create" | "edit" | null;
 type PracticeFormMode = "create" | "view" | "edit" | "delete";
 type ContractFormMode = "create" | "edit";
 
@@ -193,6 +217,8 @@ const EMPTY_PRACTICE_FORM = {
   practice_center_sector: "",
   practice_center_id: "",
   workplace: "",
+  tutor_emha: "",
+  tutor_company: "",
   does_practices: "NO" as (typeof PRACTICE_STATE_OPTIONS)[number],
   conditions_for_practice: "",
   practice_shift: "",
@@ -206,10 +232,12 @@ const EMPTY_PRACTICE_FORM = {
   leave_date: "",
 };
 const EMPTY_ENROLLED_COURSE_FORM: EnrolledCourseForm = {
+  original_expediente: "",
   expediente: "",
   course_code: "",
   itinerary_name: "",
   formation_start_date: "",
+  effective_start_date: "",
   formation_end_date: "",
   formation_schedule: "",
   company: "",
@@ -247,6 +275,24 @@ function sexText(s: unknown): string {
     default:
       return "Desconocido";
   }
+}
+
+function ticText(value: unknown): string {
+  const normalized = (value ?? "").toString().trim().toUpperCase();
+  if (normalized === "SI") return "Si";
+  return "No";
+}
+
+function statusLaboralText(value: unknown): string {
+  const normalized = (value ?? "").toString().trim();
+  if (
+    normalized === "Buscando empleo" ||
+    normalized === "Buscando mejorar empleo" ||
+    normalized === "Sin buscar empleo"
+  ) {
+    return normalized;
+  }
+  return "-";
 }
 
 function courseStatusText(value: unknown): string {
@@ -426,6 +472,7 @@ export default function StudentDetailPage() {
   const [recommended, setRecommended] = useState<Array<{ vacancy: Vacancy; score: number }>>([]);
 
   const [enrolledCourses, setEnrolledCourses] = useState<EnrolledItineraryCourse[]>([]);
+  const [courseItinerariesCatalog, setCourseItinerariesCatalog] = useState<CourseItineraryCatalogRow[]>([]);
   const [interviews, setInterviews] = useState<Interview[]>([]);
   const [invitations, setInvitations] = useState<InvitationRow[]>([]);
   const [practiceRows, setPracticeRows] = useState<PracticeRow[]>([]);
@@ -453,6 +500,8 @@ export default function StudentDetailPage() {
     municipality_code: "",
     phone: "",
     email: "",
+    tic: "NO" as (typeof TIC_OPTIONS)[number],
+    status_laboral: "" as (typeof STATUS_LABORAL_OPTIONS)[number],
     notes: "",
   });
 
@@ -470,6 +519,7 @@ export default function StudentDetailPage() {
   const [enrolledCourseForm, setEnrolledCourseForm] = useState<EnrolledCourseForm>(
     EMPTY_ENROLLED_COURSE_FORM
   );
+  const [enrolledCourseFormMode, setEnrolledCourseFormMode] = useState<EnrolledCourseFormMode>(null);
   const [enrolledCourseSaving, setEnrolledCourseSaving] = useState(false);
 
   // Interviews form
@@ -509,6 +559,8 @@ export default function StudentDetailPage() {
     practice_center_sector: string;
     practice_center_id: string;
     workplace: string;
+    tutor_emha: string;
+    tutor_company: string;
     does_practices: (typeof PRACTICE_STATE_OPTIONS)[number];
     conditions_for_practice: string;
     practice_shift: string;
@@ -551,6 +603,44 @@ export default function StudentDetailPage() {
     companies.forEach((c) => m.set(c.id, c.name));
     return m;
   }, [companies]);
+
+  const courseItineraryOptions = useMemo(() => {
+    return [...courseItinerariesCatalog].sort((a, b) =>
+      (a.course_code || "").localeCompare(b.course_code || "", "es", { sensitivity: "base" })
+    );
+  }, [courseItinerariesCatalog]);
+
+  function applyItineraryToEnrolledForm(nextCourseCode: string, currentForm: EnrolledCourseForm): EnrolledCourseForm {
+    const selected = courseItinerariesCatalog.find((item) => item.course_code === nextCourseCode);
+    if (!selected) {
+      return {
+        ...currentForm,
+        course_code: nextCourseCode,
+        itinerary_name: "",
+        formation_start_date: "",
+        effective_start_date: "",
+        formation_end_date: "",
+        formation_schedule: "",
+        company: "",
+        teacher: "",
+      };
+    }
+    const defaultEffectiveStart = fmtDate(selected.formation_start_date);
+    const keepExistingEffectiveStart =
+      currentForm.course_code === nextCourseCode ? currentForm.effective_start_date : "";
+    return {
+      ...currentForm,
+      course_code: selected.course_code,
+      itinerary_name: selected.itinerary_name ?? "",
+      formation_start_date: fmtDate(selected.formation_start_date),
+      effective_start_date:
+        keepExistingEffectiveStart || defaultEffectiveStart,
+      formation_end_date: fmtDate(selected.formation_end_date),
+      formation_schedule: selected.formation_schedule ?? "",
+      company: selected.company ?? "",
+      teacher: selected.teacher ?? "",
+    };
+  }
 
   const practiceCompanyNameOptions = useMemo(() => {
     return Array.from(
@@ -888,7 +978,7 @@ export default function StudentDetailPage() {
 
   async function fetchAll(currentSid: string) {
     const n = Number(currentSid);
-    const [sRes, vRes, cRes, iRes, ecRes, invRes, practicesRes, hcRes, mRes] = await Promise.all([
+    const [sRes, vRes, cRes, iRes, ecRes, invRes, practicesRes, hcRes, ciRes, mRes] = await Promise.all([
       api.get<Student>(`/students/${currentSid}`),
       api.get<Vacancy[]>(`/vacancies`),
       api.get<Company[]>(`/companies`),
@@ -897,6 +987,7 @@ export default function StudentDetailPage() {
       api.get<InvitationRow[]>(`/invitations`, { params: { student_id: n } }),
       api.get<PracticeRow[]>(`/practices`, { params: { student_id: n } }),
       api.get<HiringContractRow[]>(`/hiring-contracts`, { params: { student_id: n } }),
+      api.get<CourseItineraryCatalogRow[]>(`/course-itineraries`),
       api.get<MatchingVacancyApiRow[]>(`/matching/vacancies`, { params: { studentId: n, limit: 500 } }),
     ]);
 
@@ -911,6 +1002,7 @@ export default function StudentDetailPage() {
       invitations: Array.isArray(invRes.data) ? invRes.data : [],
       practiceRows: Array.isArray(practicesRes.data) ? practicesRes.data : [],
       contracts: Array.isArray(hcRes.data) ? hcRes.data : [],
+      courseItinerariesCatalog: Array.isArray(ciRes.data) ? ciRes.data : [],
       recommended: rec
         .map((v) => ({ vacancy: v, score: Number((v as any).score) }))
         .filter((x) => Number.isFinite(x.score) && x.score >= 50),
@@ -971,6 +1063,7 @@ export default function StudentDetailPage() {
         setCompanies(data.companies);
         setInterviews(data.interviews);
         setEnrolledCourses(data.enrolledCourses);
+        setCourseItinerariesCatalog(data.courseItinerariesCatalog);
         setInvitations(data.invitations);
         setPracticeRows(data.practiceRows);
         setContracts(data.contracts);
@@ -1003,6 +1096,13 @@ export default function StudentDetailPage() {
       municipality_code: student.municipality_code != null ? String(student.municipality_code) : "",
       phone: student.phone || "",
       email: student.email || "",
+      tic: student.tic === "SI" ? "SI" : "NO",
+      status_laboral:
+        student.status_laboral === "Buscando empleo" ||
+        student.status_laboral === "Buscando mejorar empleo" ||
+        student.status_laboral === "Sin buscar empleo"
+          ? student.status_laboral
+          : "",
       notes: student.notes || "",
     });
   }, [student]);
@@ -1025,6 +1125,8 @@ export default function StudentDetailPage() {
         municipality_code: parsedMunicipalityCode,
         phone: studentDraft.phone || null,
         email: studentDraft.email || null,
+        tic: studentDraft.tic,
+        status_laboral: studentDraft.status_laboral || null,
         notes: studentDraft.notes || null,
       });
 
@@ -1046,6 +1148,8 @@ export default function StudentDetailPage() {
           : null,
         phone: studentDraft.phone || null,
         email: studentDraft.email || null,
+        tic: studentDraft.tic,
+        status_laboral: studentDraft.status_laboral || null,
         notes: studentDraft.notes || null,
       });
 
@@ -1064,11 +1168,14 @@ export default function StudentDetailPage() {
   }
 
   function startEditEnrolledCourse(course: EnrolledItineraryCourse) {
+    setEnrolledCourseFormMode("edit");
     setEnrolledCourseForm({
+      original_expediente: course.expediente,
       expediente: course.expediente,
       course_code: course.course_code,
       itinerary_name: course.itinerary_name ?? "",
       formation_start_date: fmtDate(course.formation_start_date),
+      effective_start_date: fmtDate(course.effective_start_date ?? course.formation_start_date),
       formation_end_date: fmtDate(course.formation_end_date),
       formation_schedule: course.formation_schedule ?? "",
       company: course.company ?? "",
@@ -1088,25 +1195,55 @@ export default function StudentDetailPage() {
       ) || "",
     });
   }
+  function startCreateEnrolledCourse() {
+    const firstItinerary = courseItineraryOptions[0];
+    const base = { ...EMPTY_ENROLLED_COURSE_FORM };
+    const initialized = firstItinerary
+      ? applyItineraryToEnrolledForm(firstItinerary.course_code, base)
+      : base;
+    setEnrolledCourseForm({
+      ...initialized,
+      effective_start_date:
+        initialized.effective_start_date || initialized.formation_start_date,
+    });
+    setEnrolledCourseFormMode("create");
+  }
 
   function resetEnrolledCourseForm() {
+    setEnrolledCourseFormMode(null);
     setEnrolledCourseForm(EMPTY_ENROLLED_COURSE_FORM);
   }
 
   async function saveEnrolledCourse() {
-    if (!sid || !enrolledCourseForm.expediente) return;
+    if (!sid || !enrolledCourseFormMode) return;
+    if (!enrolledCourseForm.course_code.trim() || !enrolledCourseForm.expediente.trim()) {
+      setActionError("Itinerario, código de curso y expediente son obligatorios.");
+      return;
+    }
     try {
       setActionError(null);
       setEnrolledCourseSaving(true);
-      await api.put(
-        `/students/${sid}/enrolled-courses/${encodeURIComponent(enrolledCourseForm.expediente)}`,
-        {
-          course_status: enrolledCourseForm.course_status,
-          leave_date: enrolledCourseForm.leave_date || null,
-          leave_reason: enrolledCourseForm.leave_reason || null,
-          leave_notification: enrolledCourseForm.leave_notification || null,
-        }
-      );
+      const payload = {
+        expediente: enrolledCourseForm.expediente.trim(),
+        course_code: enrolledCourseForm.course_code.trim(),
+        effective_start_date:
+          enrolledCourseForm.effective_start_date || enrolledCourseForm.formation_start_date || null,
+        course_status: enrolledCourseForm.course_status,
+        leave_date: enrolledCourseForm.leave_date || null,
+        leave_reason: enrolledCourseForm.leave_reason || null,
+        leave_notification: enrolledCourseForm.leave_notification || null,
+      };
+
+      if (enrolledCourseFormMode === "create") {
+        await api.post(`/students/${sid}/enrolled-courses`, payload);
+      } else {
+        await api.put(
+          `/students/${sid}/enrolled-courses/${encodeURIComponent(
+            enrolledCourseForm.original_expediente || enrolledCourseForm.expediente
+          )}`,
+          payload
+        );
+      }
       await refreshEnrolledCourses();
       resetEnrolledCourseForm();
     } catch (e: any) {
@@ -1358,6 +1495,8 @@ export default function StudentDetailPage() {
       practice_center_sector: "",
       practice_center_id: "",
       workplace: p.workplace ?? "",
+      tutor_emha: p.tutor_emha ?? "",
+      tutor_company: p.tutor_company ?? "",
       does_practices:
         (p.does_practices &&
         (PRACTICE_STATE_OPTIONS as readonly string[]).includes(
@@ -1422,6 +1561,8 @@ export default function StudentDetailPage() {
         company_id: companyId,
         company_name: resolvedCompanyName,
         workplace: practiceForm.workplace || null,
+        tutor_emha: practiceForm.tutor_emha || null,
+        tutor_company: practiceForm.tutor_company || null,
         does_practices: practiceForm.does_practices,
         conditions_for_practice: practiceForm.conditions_for_practice || null,
         practice_shift: practiceForm.practice_shift || null,
@@ -1639,6 +1780,13 @@ export default function StudentDetailPage() {
                               municipality_code: student.municipality_code != null ? String(student.municipality_code) : "",
                               phone: student.phone || "",
                               email: student.email || "",
+                              tic: student.tic === "SI" ? "SI" : "NO",
+                              status_laboral:
+                                student.status_laboral === "Buscando empleo" ||
+                                student.status_laboral === "Buscando mejorar empleo" ||
+                                student.status_laboral === "Sin buscar empleo"
+                                  ? student.status_laboral
+                                  : "",
                               notes: student.notes || "",
                             });
                           }}
@@ -1838,6 +1986,56 @@ export default function StudentDetailPage() {
                         />
                       ) : (
                         <Typography variant="body2">{student.email ?? "-"}</Typography>
+                      )}
+                    </InfoRow>
+                    <InfoRow label="TIC">
+                      {editingStudent ? (
+                        <TextField
+                          select
+                          size="small"
+                          fullWidth
+                          value={studentDraft.tic}
+                          onChange={(e) =>
+                            setStudentDraft((d) => ({
+                              ...d,
+                              tic: e.target.value as (typeof TIC_OPTIONS)[number],
+                            }))
+                          }
+                        >
+                          <MenuItem value="">
+                            <em>Seleccione una opción</em>
+                          </MenuItem>
+                          <MenuItem value="NO">No</MenuItem>
+                          <MenuItem value="SI">Si</MenuItem>
+                        </TextField>
+                      ) : (
+                        <Typography variant="body2">{ticText(student.tic)}</Typography>
+                      )}
+                    </InfoRow>
+
+                    <InfoRow label="Status laboral">
+                      {editingStudent ? (
+                        <TextField
+                          select
+                          size="small"
+                          fullWidth
+                          value={studentDraft.status_laboral}
+                          onChange={(e) =>
+                            setStudentDraft((d) => ({
+                              ...d,
+                              status_laboral: e.target.value as (typeof STATUS_LABORAL_OPTIONS)[number],
+                            }))
+                          }
+                        >
+                          <MenuItem value="">
+                            <em>Seleccione una opción</em>
+                          </MenuItem>
+                          <MenuItem value="Buscando empleo">Buscando empleo</MenuItem>
+                          <MenuItem value="Buscando mejorar empleo">Buscando mejorar empleo</MenuItem>
+                          <MenuItem value="Sin buscar empleo">Sin buscar empleo</MenuItem>
+                        </TextField>
+                      ) : (
+                        <Typography variant="body2">{statusLaboralText(student.status_laboral)}</Typography>
                       )}
                     </InfoRow>
 
@@ -2178,6 +2376,16 @@ export default function StudentDetailPage() {
         <DialogTitle>Cursos realizados</DialogTitle>
         <DialogContent dividers>
           <Stack spacing={2}>
+            <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+              <Stack direction="row" justifyContent="space-between" alignItems="center">
+                <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                  Total: {enrolledCourses.length}
+                </Typography>
+                <Button variant="outlined" onClick={startCreateEnrolledCourse}>
+                  Nuevo itinerario
+                </Button>
+              </Stack>
+            </Paper>
             <Paper variant="outlined" sx={{ borderRadius: 2, overflow: "hidden" }}>
               <Box sx={{ overflowX: "auto" }}>
                 <Table size="small">
@@ -2188,6 +2396,7 @@ export default function StudentDetailPage() {
                       <TableCell>Expediente</TableCell>
                       <TableCell>Estado</TableCell>
                       <TableCell>Fecha inicio formación</TableCell>
+                      <TableCell>Fecha efectiva de inicio</TableCell>
                       <TableCell>Fecha fin formación</TableCell>
                     </TableRow>
                   </TableHead>
@@ -2196,7 +2405,7 @@ export default function StudentDetailPage() {
                       <TableRow
                         key={course.expediente}
                         hover
-                        selected={enrolledCourseForm.expediente === course.expediente}
+                        selected={enrolledCourseForm.original_expediente === course.expediente}
                         sx={{ cursor: "pointer" }}
                         onClick={() => startEditEnrolledCourse(course)}
                         tabIndex={0}
@@ -2209,12 +2418,13 @@ export default function StudentDetailPage() {
                         <TableCell>{course.expediente}</TableCell>
                         <TableCell>{courseStatusText(course.course_status)}</TableCell>
                         <TableCell>{formatDateDMY(course.formation_start_date)}</TableCell>
+                        <TableCell>{formatDateDMY(course.effective_start_date ?? course.formation_start_date)}</TableCell>
                         <TableCell>{formatDateDMY(course.formation_end_date)}</TableCell>
                       </TableRow>
                     ))}
                     {enrolledCourses.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={6} align="center" sx={{ py: 3, color: "text.secondary" }}>
+                        <TableCell colSpan={7} align="center" sx={{ py: 3, color: "text.secondary" }}>
                           Sin itinerarios matriculados
                         </TableCell>
                       </TableRow>
@@ -2225,27 +2435,53 @@ export default function StudentDetailPage() {
             </Paper>
             <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
               <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                {enrolledCourseForm.expediente ? "Editar itinerario" : "Selecciona un itinerario para editar"}
+                {enrolledCourseFormMode === "create"
+                  ? "Nuevo itinerario"
+                  : enrolledCourseFormMode === "edit"
+                    ? "Editar itinerario"
+                    : "Selecciona un itinerario para editar"}
               </Typography>
-              {enrolledCourseForm.expediente ? (
+              {enrolledCourseFormMode ? (
                 <Grid container spacing={2}>
-                  <Grid size={{ xs: 12, md: 6 }}>
-                    <TextField
-                      label="Itinerario"
-                      size="small"
-                      fullWidth
-                      value={enrolledCourseForm.itinerary_name || "-"}
-                      InputProps={{ readOnly: true }}
-                    />
-                  </Grid>
                   <Grid size={{ xs: 12, md: 3 }}>
                     <TextField
+                      select
                       label="Código curso"
                       size="small"
                       fullWidth
                       value={enrolledCourseForm.course_code}
-                      InputProps={{ readOnly: true }}
-                    />
+                      onChange={(e) =>
+                        setEnrolledCourseForm((f) =>
+                          applyItineraryToEnrolledForm(e.target.value, f)
+                        )
+                      }
+                    >
+                      {courseItineraryOptions.map((courseOption) => (
+                        <MenuItem key={courseOption.course_code} value={courseOption.course_code}>
+                          {courseOption.course_code}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  </Grid>
+                  <Grid size={{ xs: 12, md: 6 }}>
+                    <TextField
+                      select
+                      label="Itinerario"
+                      size="small"
+                      fullWidth
+                      value={enrolledCourseForm.itinerary_name}
+                      disabled
+                    >
+                      {enrolledCourseForm.itinerary_name ? (
+                        <MenuItem value={enrolledCourseForm.itinerary_name}>
+                          {enrolledCourseForm.itinerary_name}
+                        </MenuItem>
+                      ) : (
+                        <MenuItem value="">
+                          <em>Seleccione código curso</em>
+                        </MenuItem>
+                      )}
+                    </TextField>
                   </Grid>
                   <Grid size={{ xs: 12, md: 3 }}>
                     <TextField
@@ -2253,7 +2489,9 @@ export default function StudentDetailPage() {
                       size="small"
                       fullWidth
                       value={enrolledCourseForm.expediente}
-                      InputProps={{ readOnly: true }}
+                      onChange={(e) =>
+                        setEnrolledCourseForm((f) => ({ ...f, expediente: e.target.value }))
+                      }
                     />
                   </Grid>
                   <Grid size={{ xs: 12, md: 4 }}>
@@ -2263,6 +2501,18 @@ export default function StudentDetailPage() {
                       fullWidth
                       value={formatDateDMY(enrolledCourseForm.formation_start_date)}
                       InputProps={{ readOnly: true }}
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12, md: 4 }}>
+                    <DateTextField
+                      label="Fecha efectiva de inicio"
+                      size="small"
+                      fullWidth
+                      value={enrolledCourseForm.effective_start_date}
+                      onChange={(nextIso) =>
+                        setEnrolledCourseForm((f) => ({ ...f, effective_start_date: nextIso }))
+                      }
+                      placeholder="dd/mm/aaaa"
                     />
                   </Grid>
                   <Grid size={{ xs: 12, md: 4 }}>
@@ -2387,14 +2637,14 @@ export default function StudentDetailPage() {
                         Cancelar
                       </Button>
                       <Button variant="contained" onClick={saveEnrolledCourse} disabled={enrolledCourseSaving}>
-                        Guardar cambios
+                        Guardar
                       </Button>
                     </Stack>
                   </Grid>
                 </Grid>
               ) : (
                 <Typography color="text.secondary">
-                  Selecciona un itinerario en la tabla para editar estado y datos de baja.
+                  Selecciona un itinerario en la tabla para editarlo o pulsa NUEVO ITINERARIO.
                 </Typography>
               )}
             </Paper>
@@ -2984,9 +3234,7 @@ export default function StudentDetailPage() {
                   helperText={
                     !practiceForm.company_name
                       ? "Selecciona primero el nombre comercial."
-                      : practiceFiscalNameOptions.length === 1
-                        ? "Seleccionado automáticamente porque solo existe un nombre fiscal."
-                        : "Selecciona el nombre fiscal asociado al nombre comercial."
+                      : "Selecciona el nombre fiscal asociado al nombre comercial."
                   }
                 >
                   <MenuItem value="">
@@ -2999,7 +3247,6 @@ export default function StudentDetailPage() {
                   ))}
                 </TextField>
               </Grid>
-
               {selectedPracticeCompanyId && practiceCompanyCentersLoading && (
                 <Grid size={{ xs: 12 }}>
                   <TextField
@@ -3134,6 +3381,25 @@ export default function StudentDetailPage() {
                     />
                   </Grid>
                 )}
+
+              <Grid size={{ xs: 12, md: 6 }}>
+                <TextField
+                  label="Tutores de EMHA"
+                  size="small"
+                  fullWidth
+                  value={practiceForm.tutor_emha}
+                  onChange={(e) => setPracticeForm((f) => ({ ...f, tutor_emha: e.target.value }))}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <TextField
+                  label="Tutores de la Empresa"
+                  size="small"
+                  fullWidth
+                  value={practiceForm.tutor_company}
+                  onChange={(e) => setPracticeForm((f) => ({ ...f, tutor_company: e.target.value }))}
+                />
+              </Grid>
 
               <Grid size={{ xs: 12, md: 4 }}>
                 <DateTextField

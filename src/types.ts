@@ -14,6 +14,8 @@ export interface Student {
   municipality?: string | null;
   phone?: string | null;
   email?: string | null;
+  tic?: "SI" | "NO" | null;
+  status_laboral?: "Buscando empleo" | "Buscando mejorar empleo" | "Sin buscar empleo" | null;
   notes?: string | null;
 }
 
@@ -70,10 +72,20 @@ export interface Company {
 export interface Vacancy {
   id: number;
   company_id: number;
+  company_name?: string | null;
+  company_fiscal_name?: string | null;
+  practice_center_id?: number | null;
+  practice_center_sector?: string | null;
+  practice_center_name?: string | null;
+  practice_center_address?: string | null;
+  workplace?: string | null;
   title: string;
   sector?: string | null;
   description?: string | null;
   requirements?: string | null; // plain text
+  horarios?: string | null;
+  tipo_contrato?: string | null;
+  sueldo_aproximado_bruto_anual?: number | null;
   status: "open" | "closed";
   created_at?: string | null; // ISO datetime (or MySQL Date)
 }

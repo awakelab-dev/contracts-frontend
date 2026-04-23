@@ -28,6 +28,8 @@ type StudentForm = {
   municipality_code: string;
   phone: string;
   email: string;
+  tic: "SI" | "NO";
+  status_laboral: "" | "Buscando empleo" | "Buscando mejorar empleo" | "Sin buscar empleo";
   notes: string;
 };
 
@@ -42,6 +44,8 @@ const EMPTY_FORM: StudentForm = {
   municipality_code: "",
   phone: "",
   email: "",
+  tic: "NO",
+  status_laboral: "",
   notes: "",
 };
 
@@ -65,6 +69,13 @@ function toForm(student: Student): StudentForm {
     municipality_code: student.municipality_code != null ? String(student.municipality_code) : "",
     phone: student.phone || "",
     email: student.email || "",
+    tic: student.tic === "SI" ? "SI" : "NO",
+    status_laboral:
+      student.status_laboral === "Buscando empleo" ||
+      student.status_laboral === "Buscando mejorar empleo" ||
+      student.status_laboral === "Sin buscar empleo"
+        ? student.status_laboral
+        : "",
     notes: student.notes || "",
   };
 }
@@ -176,6 +187,8 @@ export default function StudentEditPage() {
         municipality_code: parseCode(form.municipality_code),
         phone: form.phone.trim() || null,
         email: form.email.trim() || null,
+        tic: form.tic,
+        status_laboral: form.status_laboral || null,
         notes: form.notes.trim() || null,
       };
 
@@ -366,6 +379,41 @@ export default function StudentEditPage() {
               value={form.email}
               onChange={(e) => setForm((s) => ({ ...s, email: e.target.value }))}
             />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6, md: 4 }}>
+            <TextField
+              fullWidth
+              select
+              label="TIC"
+              size="small"
+              value={form.tic}
+              onChange={(e) => setForm((s) => ({ ...s, tic: e.target.value as StudentForm["tic"] }))}
+            >
+              <MenuItem value="">
+                <em>Seleccione una opción</em>
+              </MenuItem>
+              <MenuItem value="NO">No</MenuItem>
+              <MenuItem value="SI">Si</MenuItem>
+            </TextField>
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6, md: 4 }}>
+            <TextField
+              fullWidth
+              select
+              label="STATUS LABORAL"
+              size="small"
+              value={form.status_laboral}
+              onChange={(e) =>
+                setForm((s) => ({ ...s, status_laboral: e.target.value as StudentForm["status_laboral"] }))
+              }
+            >
+              <MenuItem value="">
+                <em>Seleccione una opción</em>
+              </MenuItem>
+              <MenuItem value="Buscando empleo">Buscando empleo</MenuItem>
+              <MenuItem value="Buscando mejorar empleo">Buscando mejorar empleo</MenuItem>
+              <MenuItem value="Sin buscar empleo">Sin buscar empleo</MenuItem>
+            </TextField>
           </Grid>
           <Grid size={{ xs: 12 }}>
             <TextField

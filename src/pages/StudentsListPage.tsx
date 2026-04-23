@@ -55,6 +55,8 @@ type NewStudentForm = {
   municipality_code: string;
   phone: string;
   email: string;
+  tic: "SI" | "NO";
+  status_laboral: "" | "Buscando empleo" | "Buscando mejorar empleo" | "Sin buscar empleo";
   notes: string;
 };
 
@@ -69,6 +71,8 @@ const EMPTY_NEW_STUDENT_FORM: NewStudentForm = {
   municipality_code: "",
   phone: "",
   email: "",
+  tic: "NO",
+  status_laboral: "",
   notes: "",
 };
 
@@ -204,6 +208,8 @@ export default function StudentsListPage() {
         municipality_code: parseCode(newStudent.municipality_code),
         phone: newStudent.phone.trim() || null,
         email: newStudent.email.trim() || null,
+        tic: newStudent.tic,
+        status_laboral: newStudent.status_laboral || null,
         notes: newStudent.notes.trim() || null,
       });
 
@@ -523,6 +529,47 @@ export default function StudentsListPage() {
                 value={newStudent.email}
                 onChange={(e) => setNewStudent((s) => ({ ...s, email: e.target.value }))}
               />
+            </Stack>
+            <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
+              <TextField
+                label="TIC"
+                select
+                size="small"
+                fullWidth
+                value={newStudent.tic}
+                onChange={(e) =>
+                  setNewStudent((s) => ({
+                    ...s,
+                    tic: e.target.value as NewStudentForm["tic"],
+                  }))
+                }
+              >
+                <MenuItem value="">
+                  <em>Seleccione una opción</em>
+                </MenuItem>
+                <MenuItem value="NO">No</MenuItem>
+                <MenuItem value="SI">Si</MenuItem>
+              </TextField>
+              <TextField
+                label="Status laboral"
+                select
+                size="small"
+                fullWidth
+                value={newStudent.status_laboral}
+                onChange={(e) =>
+                  setNewStudent((s) => ({
+                    ...s,
+                    status_laboral: e.target.value as NewStudentForm["status_laboral"],
+                  }))
+                }
+              >
+                <MenuItem value="">
+                  <em>Seleccione una opción</em>
+                </MenuItem>
+                <MenuItem value="Buscando empleo">Buscando empleo</MenuItem>
+                <MenuItem value="Buscando mejorar empleo">Buscando mejorar empleo</MenuItem>
+                <MenuItem value="Sin buscar empleo">Sin buscar empleo</MenuItem>
+              </TextField>
             </Stack>
 
             <TextField
