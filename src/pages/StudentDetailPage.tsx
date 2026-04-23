@@ -137,8 +137,159 @@ type EnrolledCourseForm = {
   leave_notification: "" | "NOTIFICADA" | "FIRMADA" | "EXPULSION";
 };
 
-const CONTRACT_TYPE_OPTIONS = ["Indefinido", "Duración Determinada", "Temporal"] as const;
-const WORKDAY_OPTIONS = ["Tiempo Completo", "Tiempo Parcial", "Fijo Discontínuo"] as const;
+type ContractCatalogItem = {
+  numero: number;
+  tipo: string;
+  jornada: string;
+  contratacion: string;
+};
+const CONTRACT_NUMBER_CATALOG: ContractCatalogItem[] = [
+  { numero: 100, tipo: "INDEFINIDO", jornada: "TIEMPO COMPLETO", contratacion: "ORDINARIO" },
+  {
+    numero: 109,
+    tipo: "INDEFINIDO",
+    jornada: "TIEMPO COMPLETO",
+    contratacion: "FOMENTO CONTRATACIÓN INDEFINIDA / EMPLEO ESTABLE",
+  },
+  { numero: 130, tipo: "INDEFINIDO", jornada: "TIEMPO COMPLETO", contratacion: "DISCAPACITADOS" },
+  { numero: 139, tipo: "INDEFINIDO", jornada: "TIEMPO COMPLETO", contratacion: "DISCAPACITADOS" },
+  {
+    numero: 150,
+    tipo: "INDEFINIDO",
+    jornada: "TIEMPO COMPLETO",
+    contratacion: "FOMENTO CONTRATACIÓN INDEFINIDA / EMPLEO ESTABLE",
+  },
+  { numero: 189, tipo: "INDEFINIDO", jornada: "TIEMPO COMPLETO", contratacion: "ORDINARIO" },
+  { numero: 200, tipo: "INDEFINIDO", jornada: "TIEMPO PARCIAL", contratacion: "ORDINARIO" },
+  {
+    numero: 209,
+    tipo: "INDEFINIDO",
+    jornada: "TIEMPO PARCIAL",
+    contratacion: "FOMENTO CONTRATACIÓN INDEFINIDA / EMPLEO ESTABLE",
+  },
+  { numero: 230, tipo: "INDEFINIDO", jornada: "TIEMPO PARCIAL", contratacion: "DISCAPACITADOS" },
+  { numero: 239, tipo: "INDEFINIDO", jornada: "TIEMPO PARCIAL", contratacion: "DISCAPACITADOS" },
+  {
+    numero: 250,
+    tipo: "INDEFINIDO",
+    jornada: "TIEMPO PARCIAL",
+    contratacion: "FOMENTO CONTRATACIÓN INDEFINIDA / EMPLEO ESTABLE",
+  },
+  { numero: 289, tipo: "INDEFINIDO", jornada: "TIEMPO PARCIAL", contratacion: "ORDINARIO" },
+  { numero: 300, tipo: "INDEFINIDO", jornada: "FIJO DISCONTINUO", contratacion: "ORDINARIO" },
+  {
+    numero: 309,
+    tipo: "INDEFINIDO",
+    jornada: "FIJO DISCONTINUO",
+    contratacion: "FOMENTO CONTRATACIÓN INDEFINIDA / EMPLEO ESTABLE",
+  },
+  { numero: 330, tipo: "INDEFINIDO", jornada: "FIJO DISCONTINUO", contratacion: "DISCAPACITADOS" },
+  { numero: 339, tipo: "INDEFINIDO", jornada: "FIJO DISCONTINUO", contratacion: "DISCAPACITADOS" },
+  {
+    numero: 350,
+    tipo: "INDEFINIDO",
+    jornada: "FIJO DISCONTINUO",
+    contratacion: "FOMENTO CONTRATACIÓN INDEFINIDA / EMPLEO ESTABLE",
+  },
+  { numero: 389, tipo: "INDEFINIDO", jornada: "FIJO DISCONTINUO", contratacion: "ORDINARIO" },
+  {
+    numero: 401,
+    tipo: "DURACIÓN DETERMINADA",
+    jornada: "TIEMPO COMPLETO",
+    contratacion: "OBRA O SERVICIO DETERMINADO",
+  },
+  {
+    numero: 402,
+    tipo: "DURACIÓN DETERMINADA",
+    jornada: "TIEMPO COMPLETO",
+    contratacion: "EVENTUAL POR CIRCUNSTANCIAS DE LA PRODUCCIÓN",
+  },
+  {
+    numero: 403,
+    tipo: "DURACIÓN DETERMINADA",
+    jornada: "TIEMPO COMPLETO",
+    contratacion: "INSERCIÓN",
+  },
+  { numero: 408, tipo: "TEMPORAL", jornada: "TIEMPO COMPLETO", contratacion: "INTERINIDAD" },
+  {
+    numero: 410,
+    tipo: "DURACIÓN DETERMINADA",
+    jornada: "TIEMPO COMPLETO",
+    contratacion: "INTERINIDAD",
+  },
+  {
+    numero: 418,
+    tipo: "DURACIÓN DETERMINADA",
+    jornada: "TIEMPO COMPLETO",
+    contratacion: "INTERINIDAD PRÁCTICAS",
+  },
+  { numero: 420, tipo: "TEMPORAL", jornada: "TIEMPO COMPLETO", contratacion: "FORMACIÓN" },
+  { numero: 421, tipo: "TEMPORAL", jornada: "TIEMPO COMPLETO", contratacion: "FORMACIÓN" },
+  { numero: 430, tipo: "TEMPORAL", jornada: "TIEMPO COMPLETO", contratacion: "DISCAPACITADOS" },
+  { numero: 441, tipo: "TEMPORAL", jornada: "TIEMPO COMPLETO", contratacion: "RELEVO" },
+  {
+    numero: 450,
+    tipo: "TEMPORAL",
+    jornada: "TIEMPO COMPLETO",
+    contratacion: "FOMENTO CONTRATACIÓN INDEFINIDA / EMPLEO ESTABLE",
+  },
+  {
+    numero: 452,
+    tipo: "TEMPORAL",
+    jornada: "TIEMPO COMPLETO",
+    contratacion: "DESEMPLEADOS EMPRESAS DE INSERCIÓN",
+  },
+  {
+    numero: 501,
+    tipo: "DURACIÓN DETERMINADA",
+    jornada: "TIEMPO PARCIAL",
+    contratacion: "OBRA O SERVICIO DETERMINADO",
+  },
+  {
+    numero: 502,
+    tipo: "DURACIÓN DETERMINADA",
+    jornada: "TIEMPO PARCIAL",
+    contratacion: "EVENTUAL POR CIRCUNSTANCIAS DE LA PRODUCCIÓN",
+  },
+  {
+    numero: 503,
+    tipo: "DURACIÓN DETERMINADA",
+    jornada: "TIEMPO PARCIAL",
+    contratacion: "INSERCIÓN",
+  },
+  { numero: 508, tipo: "TEMPORAL", jornada: "TIEMPO PARCIAL", contratacion: "INTERINIDAD" },
+  {
+    numero: 510,
+    tipo: "DURACIÓN DETERMINADA",
+    jornada: "TIEMPO PARCIAL",
+    contratacion: "INTERINIDAD",
+  },
+  {
+    numero: 518,
+    tipo: "DURACIÓN DETERMINADA",
+    jornada: "TIEMPO PARCIAL",
+    contratacion: "INTERINIDAD PRÁCTICAS",
+  },
+  { numero: 520, tipo: "TEMPORAL", jornada: "TIEMPO PARCIAL", contratacion: "PRÁCTICAS" },
+  { numero: 530, tipo: "TEMPORAL", jornada: "TIEMPO PARCIAL", contratacion: "DISCAPACITADOS" },
+  { numero: 540, tipo: "TEMPORAL", jornada: "TIEMPO PARCIAL", contratacion: "JUBILADO PARCIAL" },
+  { numero: 541, tipo: "TEMPORAL", jornada: "TIEMPO PARCIAL", contratacion: "RELEVO" },
+  {
+    numero: 550,
+    tipo: "TEMPORAL",
+    jornada: "TIEMPO PARCIAL",
+    contratacion: "FOMENTO CONTRATACIÓN INDEFINIDA / EMPLEO ESTABLE",
+  },
+  {
+    numero: 552,
+    tipo: "TEMPORAL",
+    jornada: "TIEMPO PARCIAL",
+    contratacion: "CONTRATADOS POR EMPRESAS DE TRABAJO TEMPORAL",
+  },
+];
+const CONTRACT_NUMBER_BY_CODE = new Map(
+  CONTRACT_NUMBER_CATALOG.map((item) => [String(item.numero), item] as const)
+);
 const CONTRIBUTION_GROUP_OPTIONS = [
   "INGENIEROS Y LICENCIADOS  DE ALTA DIRECCIÓN",
   "INGENIEROS TÉCNICOS, PERITOS Y AYUDANTES TITULADOS",
@@ -261,6 +412,12 @@ function parseCode(value: string) {
   if (!/^\d+$/.test(cleaned)) return null;
   const parsed = Number.parseInt(cleaned, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function getContractCatalogItem(value: string | null | undefined): ContractCatalogItem | null {
+  const parsed = parseCode((value ?? "").toString());
+  if (!parsed) return null;
+  return CONTRACT_NUMBER_BY_CODE.get(String(parsed)) ?? null;
 }
 
 
@@ -594,6 +751,23 @@ export default function StudentDetailPage() {
   }>({ ...EMPTY_CONTRACT_FORM });
   const [contractFormMode, setContractFormMode] = useState<ContractFormMode | null>(null);
   const [contractSaving, setContractSaving] = useState(false);
+  const selectedContractCatalog = useMemo(
+    () => getContractCatalogItem(contractForm.sector),
+    [contractForm.sector]
+  );
+
+  function applyContractNumberToForm(rawValue: string) {
+    const cleaned = rawValue.trim();
+    const parsed = parseCode(cleaned);
+    const normalizedNumber = parsed ? String(parsed) : cleaned;
+    const catalogItem = getContractCatalogItem(normalizedNumber);
+    setContractForm((f) => ({
+      ...f,
+      sector: normalizedNumber,
+      contract_type: catalogItem?.tipo ?? "",
+      workday_pct: catalogItem?.jornada ?? "",
+    }));
+  }
 
   const sid = String(id ?? "").trim();
   const studentDraftAge = useMemo(() => calculateAgeFromBirthDate(studentDraft.birth_date), [studentDraft.birth_date]);
@@ -1622,17 +1796,19 @@ export default function StudentDetailPage() {
   }
 
   function startEditContract(c: HiringContractRow) {
+    const contractNumber = (c.sector ?? "").trim();
+    const catalogItem = getContractCatalogItem(contractNumber);
     setContractFormMode("edit");
     setContractForm({
       id: c.id,
       company_nif: c.company_nif,
       company_name: c.company_name,
-      sector: c.sector ?? "",
+      sector: contractNumber,
       start_date: fmtDate(c.start_date),
       end_date: fmtDate(c.end_date),
-      workday_pct: c.workday_pct ?? "",
+      workday_pct: catalogItem?.jornada ?? c.workday_pct ?? "",
       contribution_group: c.contribution_group ?? "",
-      contract_type: c.contract_type ?? "",
+      contract_type: catalogItem?.tipo ?? c.contract_type ?? "",
       weekly_hours: c.weekly_hours != null ? String(c.weekly_hours) : "",
       contributed_days: c.contributed_days != null ? String(c.contributed_days) : "",
       notes: c.notes ?? "",
@@ -1657,7 +1833,7 @@ export default function StudentDetailPage() {
         student_id: n,
         company_nif: contractForm.company_nif,
         company_name: contractForm.company_name,
-        sector: contractForm.sector || null,
+        sector: contractForm.sector.trim() || null,
         start_date: contractForm.start_date,
         end_date: contractForm.end_date || null,
         workday_pct: contractForm.workday_pct || null,
@@ -3601,61 +3777,52 @@ export default function StudentDetailPage() {
 
                     <Grid size={{ xs: 12, md: 4 }}>
                       <TextField
-                        label="Sector"
+                        label="Nº de Contrato"
+                        type="number"
                         size="small"
                         fullWidth
                         value={contractForm.sector}
-                        onChange={(e) => setContractForm((f) => ({ ...f, sector: e.target.value }))}
+                        onChange={(e) => applyContractNumberToForm(e.target.value)}
+                        helperText={
+                          contractForm.sector && !selectedContractCatalog
+                            ? "Número no encontrado en la tabla base."
+                            : "Introduce el número según la tabla base."
+                        }
+                        InputProps={{ inputProps: { min: 0 } }}
                         InputLabelProps={{ shrink: true }}
                       />
                     </Grid>
 
                     <Grid size={{ xs: 12, md: 4 }}>
                       <TextField
-                        select
-                        label="Tipo de contrato"
+                        label="Tipo de Contrato"
                         size="small"
                         fullWidth
                         value={contractForm.contract_type}
-                        onChange={(e) => setContractForm((f) => ({ ...f, contract_type: e.target.value }))}
+                        InputProps={{ readOnly: true }}
                         InputLabelProps={{ shrink: true }}
-                      >
-                        <MenuItem value="">
-                          <em>—</em>
-                        </MenuItem>
-                        {contractForm.contract_type && !CONTRACT_TYPE_OPTIONS.includes(contractForm.contract_type as any) && (
-                          <MenuItem value={contractForm.contract_type}>{contractForm.contract_type} (actual)</MenuItem>
-                        )}
-                        {CONTRACT_TYPE_OPTIONS.map((opt) => (
-                          <MenuItem key={opt} value={opt}>
-                            {opt}
-                          </MenuItem>
-                        ))}
-                      </TextField>
+                      />
                     </Grid>
 
                     <Grid size={{ xs: 12, md: 4 }}>
                       <TextField
-                        select
                         label="Jornada"
                         size="small"
                         fullWidth
                         value={contractForm.workday_pct}
-                        onChange={(e) => setContractForm((f) => ({ ...f, workday_pct: e.target.value }))}
+                        InputProps={{ readOnly: true }}
                         InputLabelProps={{ shrink: true }}
-                      >
-                        <MenuItem value="">
-                          <em>—</em>
-                        </MenuItem>
-                        {contractForm.workday_pct && !WORKDAY_OPTIONS.includes(contractForm.workday_pct as any) && (
-                          <MenuItem value={contractForm.workday_pct}>{contractForm.workday_pct} (actual)</MenuItem>
-                        )}
-                        {WORKDAY_OPTIONS.map((opt) => (
-                          <MenuItem key={opt} value={opt}>
-                            {opt}
-                          </MenuItem>
-                        ))}
-                      </TextField>
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 12, md: 4 }}>
+                      <TextField
+                        label="Contratación"
+                        size="small"
+                        fullWidth
+                        value={selectedContractCatalog?.contratacion ?? ""}
+                        InputProps={{ readOnly: true }}
+                        InputLabelProps={{ shrink: true }}
+                      />
                     </Grid>
 
                     <Grid size={{ xs: 12 }}>
