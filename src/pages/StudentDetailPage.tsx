@@ -1,6 +1,5 @@
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import UploadFileIcon from "@mui/icons-material/UploadFile";
 import {
   Alert,
   Autocomplete,
@@ -91,18 +90,22 @@ type PracticeRow = {
 
 type HiringContractRow = {
   id: number;
-  student_id: number;
-  company_nif: string;
-  company_name: string;
-  sector?: string | null;
-  start_date: string;
+  student_id?: number | null;
+  expediente?: string | null;
+  sector_id?: number | null;
+  sector_name?: string | null;
+  position?: string | null;
+  company_id?: number | null;
+  company_name?: string | null;
+  company_fiscal_name?: string | null;
+  company_cif?: string | null;
+  is_itinerary_company_contract?: string | null;
+  contract_code?: number | null;
+  attached_contract?: string | null;
+  attached_work_life?: string | null;
+  observations?: string | null;
+  start_date?: string | null;
   end_date?: string | null;
-  workday_pct?: string | null;
-  contribution_group?: string | null;
-  contract_type?: string | null;
-  weekly_hours?: number | null;
-  contributed_days?: number | null;
-  notes?: string | null;
 };
 
 type MatchingVacancyApiRow = Vacancy & {
@@ -136,173 +139,18 @@ type EnrolledCourseForm = {
   leave_reason: "" | "ABANDONO" | "INSERCION" | "EXPULSION" | "ENFERMEDAD" | "OTROS";
   leave_notification: "" | "NOTIFICADA" | "FIRMADA" | "EXPULSION";
 };
-
-type ContractCatalogItem = {
-  numero: number;
-  tipo: string;
-  jornada: string;
-  contratacion: string;
+type ContractCodeCatalogItem = {
+  code: number;
+  contract_type: string;
+  workday: string;
+  hiring_mode: string;
 };
-const CONTRACT_NUMBER_CATALOG: ContractCatalogItem[] = [
-  { numero: 100, tipo: "INDEFINIDO", jornada: "TIEMPO COMPLETO", contratacion: "ORDINARIO" },
-  {
-    numero: 109,
-    tipo: "INDEFINIDO",
-    jornada: "TIEMPO COMPLETO",
-    contratacion: "FOMENTO CONTRATACIÓN INDEFINIDA / EMPLEO ESTABLE",
-  },
-  { numero: 130, tipo: "INDEFINIDO", jornada: "TIEMPO COMPLETO", contratacion: "DISCAPACITADOS" },
-  { numero: 139, tipo: "INDEFINIDO", jornada: "TIEMPO COMPLETO", contratacion: "DISCAPACITADOS" },
-  {
-    numero: 150,
-    tipo: "INDEFINIDO",
-    jornada: "TIEMPO COMPLETO",
-    contratacion: "FOMENTO CONTRATACIÓN INDEFINIDA / EMPLEO ESTABLE",
-  },
-  { numero: 189, tipo: "INDEFINIDO", jornada: "TIEMPO COMPLETO", contratacion: "ORDINARIO" },
-  { numero: 200, tipo: "INDEFINIDO", jornada: "TIEMPO PARCIAL", contratacion: "ORDINARIO" },
-  {
-    numero: 209,
-    tipo: "INDEFINIDO",
-    jornada: "TIEMPO PARCIAL",
-    contratacion: "FOMENTO CONTRATACIÓN INDEFINIDA / EMPLEO ESTABLE",
-  },
-  { numero: 230, tipo: "INDEFINIDO", jornada: "TIEMPO PARCIAL", contratacion: "DISCAPACITADOS" },
-  { numero: 239, tipo: "INDEFINIDO", jornada: "TIEMPO PARCIAL", contratacion: "DISCAPACITADOS" },
-  {
-    numero: 250,
-    tipo: "INDEFINIDO",
-    jornada: "TIEMPO PARCIAL",
-    contratacion: "FOMENTO CONTRATACIÓN INDEFINIDA / EMPLEO ESTABLE",
-  },
-  { numero: 289, tipo: "INDEFINIDO", jornada: "TIEMPO PARCIAL", contratacion: "ORDINARIO" },
-  { numero: 300, tipo: "INDEFINIDO", jornada: "FIJO DISCONTINUO", contratacion: "ORDINARIO" },
-  {
-    numero: 309,
-    tipo: "INDEFINIDO",
-    jornada: "FIJO DISCONTINUO",
-    contratacion: "FOMENTO CONTRATACIÓN INDEFINIDA / EMPLEO ESTABLE",
-  },
-  { numero: 330, tipo: "INDEFINIDO", jornada: "FIJO DISCONTINUO", contratacion: "DISCAPACITADOS" },
-  { numero: 339, tipo: "INDEFINIDO", jornada: "FIJO DISCONTINUO", contratacion: "DISCAPACITADOS" },
-  {
-    numero: 350,
-    tipo: "INDEFINIDO",
-    jornada: "FIJO DISCONTINUO",
-    contratacion: "FOMENTO CONTRATACIÓN INDEFINIDA / EMPLEO ESTABLE",
-  },
-  { numero: 389, tipo: "INDEFINIDO", jornada: "FIJO DISCONTINUO", contratacion: "ORDINARIO" },
-  {
-    numero: 401,
-    tipo: "DURACIÓN DETERMINADA",
-    jornada: "TIEMPO COMPLETO",
-    contratacion: "OBRA O SERVICIO DETERMINADO",
-  },
-  {
-    numero: 402,
-    tipo: "DURACIÓN DETERMINADA",
-    jornada: "TIEMPO COMPLETO",
-    contratacion: "EVENTUAL POR CIRCUNSTANCIAS DE LA PRODUCCIÓN",
-  },
-  {
-    numero: 403,
-    tipo: "DURACIÓN DETERMINADA",
-    jornada: "TIEMPO COMPLETO",
-    contratacion: "INSERCIÓN",
-  },
-  { numero: 408, tipo: "TEMPORAL", jornada: "TIEMPO COMPLETO", contratacion: "INTERINIDAD" },
-  {
-    numero: 410,
-    tipo: "DURACIÓN DETERMINADA",
-    jornada: "TIEMPO COMPLETO",
-    contratacion: "INTERINIDAD",
-  },
-  {
-    numero: 418,
-    tipo: "DURACIÓN DETERMINADA",
-    jornada: "TIEMPO COMPLETO",
-    contratacion: "INTERINIDAD PRÁCTICAS",
-  },
-  { numero: 420, tipo: "TEMPORAL", jornada: "TIEMPO COMPLETO", contratacion: "FORMACIÓN" },
-  { numero: 421, tipo: "TEMPORAL", jornada: "TIEMPO COMPLETO", contratacion: "FORMACIÓN" },
-  { numero: 430, tipo: "TEMPORAL", jornada: "TIEMPO COMPLETO", contratacion: "DISCAPACITADOS" },
-  { numero: 441, tipo: "TEMPORAL", jornada: "TIEMPO COMPLETO", contratacion: "RELEVO" },
-  {
-    numero: 450,
-    tipo: "TEMPORAL",
-    jornada: "TIEMPO COMPLETO",
-    contratacion: "FOMENTO CONTRATACIÓN INDEFINIDA / EMPLEO ESTABLE",
-  },
-  {
-    numero: 452,
-    tipo: "TEMPORAL",
-    jornada: "TIEMPO COMPLETO",
-    contratacion: "DESEMPLEADOS EMPRESAS DE INSERCIÓN",
-  },
-  {
-    numero: 501,
-    tipo: "DURACIÓN DETERMINADA",
-    jornada: "TIEMPO PARCIAL",
-    contratacion: "OBRA O SERVICIO DETERMINADO",
-  },
-  {
-    numero: 502,
-    tipo: "DURACIÓN DETERMINADA",
-    jornada: "TIEMPO PARCIAL",
-    contratacion: "EVENTUAL POR CIRCUNSTANCIAS DE LA PRODUCCIÓN",
-  },
-  {
-    numero: 503,
-    tipo: "DURACIÓN DETERMINADA",
-    jornada: "TIEMPO PARCIAL",
-    contratacion: "INSERCIÓN",
-  },
-  { numero: 508, tipo: "TEMPORAL", jornada: "TIEMPO PARCIAL", contratacion: "INTERINIDAD" },
-  {
-    numero: 510,
-    tipo: "DURACIÓN DETERMINADA",
-    jornada: "TIEMPO PARCIAL",
-    contratacion: "INTERINIDAD",
-  },
-  {
-    numero: 518,
-    tipo: "DURACIÓN DETERMINADA",
-    jornada: "TIEMPO PARCIAL",
-    contratacion: "INTERINIDAD PRÁCTICAS",
-  },
-  { numero: 520, tipo: "TEMPORAL", jornada: "TIEMPO PARCIAL", contratacion: "PRÁCTICAS" },
-  { numero: 530, tipo: "TEMPORAL", jornada: "TIEMPO PARCIAL", contratacion: "DISCAPACITADOS" },
-  { numero: 540, tipo: "TEMPORAL", jornada: "TIEMPO PARCIAL", contratacion: "JUBILADO PARCIAL" },
-  { numero: 541, tipo: "TEMPORAL", jornada: "TIEMPO PARCIAL", contratacion: "RELEVO" },
-  {
-    numero: 550,
-    tipo: "TEMPORAL",
-    jornada: "TIEMPO PARCIAL",
-    contratacion: "FOMENTO CONTRATACIÓN INDEFINIDA / EMPLEO ESTABLE",
-  },
-  {
-    numero: 552,
-    tipo: "TEMPORAL",
-    jornada: "TIEMPO PARCIAL",
-    contratacion: "CONTRATADOS POR EMPRESAS DE TRABAJO TEMPORAL",
-  },
-];
-const CONTRACT_NUMBER_BY_CODE = new Map(
-  CONTRACT_NUMBER_CATALOG.map((item) => [String(item.numero), item] as const)
-);
-const CONTRIBUTION_GROUP_OPTIONS = [
-  "INGENIEROS Y LICENCIADOS  DE ALTA DIRECCIÓN",
-  "INGENIEROS TÉCNICOS, PERITOS Y AYUDANTES TITULADOS",
-  "JEFES ADMINISTRATIVOS Y DE TALLER",
-  "AYUDANTES NO TITULADOS",
-  "OFICIALES ADMINISTRATIVOS",
-  "SUBALTERNOS",
-  "AUXILIARES ADMINISTRATIVOS",
-  "OFICIALES DE PRIMERA Y SEGUNDA",
-  "OFICIALES DE TERCERA Y ESPECIALISTAS",
-  "PEONES",
-  "TRABAJADORES MENORES DE DIECIOCHO AÑOS, CUALQUIERA QUE SEA SU CATEGORÍA PROFESIONAL",
-] as const;
+type SectorCatalogItem = {
+  id: number;
+  sector_name: string;
+};
+
+const SI_NO_OPTIONS = ["SI", "NO"] as const;
 const COURSE_STATUS_OPTIONS: Array<EnrolledCourseForm["course_status"]> = ["APTO", "NO APTO", "INSERCION"];
 const LEAVE_REASON_OPTIONS: Array<EnrolledCourseForm["leave_reason"]> = [
   "",
@@ -348,17 +196,20 @@ const EMPTY_INVITATION_FORM = {
 };
 
 const EMPTY_CONTRACT_FORM = {
-  company_nif: "",
+  expediente: "",
+  sector_id: "",
+  position: "",
+  company_id: "",
   company_name: "",
-  sector: "",
+  company_fiscal_name: "",
+  company_cif: "",
+  is_itinerary_company_contract: "NO" as (typeof SI_NO_OPTIONS)[number],
+  contract_code: "",
+  attached_contract: "NO" as (typeof SI_NO_OPTIONS)[number],
+  attached_work_life: "NO" as (typeof SI_NO_OPTIONS)[number],
+  observations: "",
   start_date: "",
   end_date: "",
-  workday_pct: "",
-  contribution_group: "",
-  contract_type: "",
-  weekly_hours: "",
-  contributed_days: "",
-  notes: "",
 };
 const EMPTY_PRACTICE_FORM = {
   expediente: "",
@@ -414,10 +265,8 @@ function parseCode(value: string) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
-function getContractCatalogItem(value: string | null | undefined): ContractCatalogItem | null {
-  const parsed = parseCode((value ?? "").toString());
-  if (!parsed) return null;
-  return CONTRACT_NUMBER_BY_CODE.get(String(parsed)) ?? null;
+function normalizeSiNoText(value: unknown): "SI" | "NO" {
+  return (value ?? "").toString().trim().toUpperCase() === "SI" ? "SI" : "NO";
 }
 
 
@@ -734,40 +583,28 @@ export default function StudentDetailPage() {
   const [practiceCompanyCenters, setPracticeCompanyCenters] = useState<CompanyPracticeCenter[]>([]);
   const [practiceCompanyCentersLoading, setPracticeCompanyCentersLoading] = useState(false);
 
-  // Hiring contracts form
+  // Employment contracts form
   const [contractForm, setContractForm] = useState<{
     id?: number;
-    company_nif: string;
+    expediente: string;
+    sector_id: string;
+    position: string;
+    company_id: string;
     company_name: string;
-    sector: string;
+    company_fiscal_name: string;
+    company_cif: string;
+    is_itinerary_company_contract: (typeof SI_NO_OPTIONS)[number];
+    contract_code: string;
+    attached_contract: (typeof SI_NO_OPTIONS)[number];
+    attached_work_life: (typeof SI_NO_OPTIONS)[number];
+    observations: string;
     start_date: string;
     end_date: string;
-    workday_pct: string;
-    contribution_group: string;
-    contract_type: string;
-    weekly_hours: string;
-    contributed_days: string;
-    notes: string;
   }>({ ...EMPTY_CONTRACT_FORM });
   const [contractFormMode, setContractFormMode] = useState<ContractFormMode | null>(null);
   const [contractSaving, setContractSaving] = useState(false);
-  const selectedContractCatalog = useMemo(
-    () => getContractCatalogItem(contractForm.sector),
-    [contractForm.sector]
-  );
-
-  function applyContractNumberToForm(rawValue: string) {
-    const cleaned = rawValue.trim();
-    const parsed = parseCode(cleaned);
-    const normalizedNumber = parsed ? String(parsed) : cleaned;
-    const catalogItem = getContractCatalogItem(normalizedNumber);
-    setContractForm((f) => ({
-      ...f,
-      sector: normalizedNumber,
-      contract_type: catalogItem?.tipo ?? "",
-      workday_pct: catalogItem?.jornada ?? "",
-    }));
-  }
+  const [contractSectorOptions, setContractSectorOptions] = useState<SectorCatalogItem[]>([]);
+  const [contractCodeOptions, setContractCodeOptions] = useState<ContractCodeCatalogItem[]>([]);
 
   const sid = String(id ?? "").trim();
   const studentDraftAge = useMemo(() => calculateAgeFromBirthDate(studentDraft.birth_date), [studentDraft.birth_date]);
@@ -777,6 +614,104 @@ export default function StudentDetailPage() {
     companies.forEach((c) => m.set(c.id, c.name));
     return m;
   }, [companies]);
+  const contractCompanyNameOptions = useMemo(() => {
+    return Array.from(
+      new Set(
+        companies
+          .map((c) => c.name.trim())
+          .filter((name) => name.length > 0)
+      )
+    ).sort((a, b) => a.localeCompare(b, "es", { sensitivity: "base" }));
+  }, [companies]);
+  const contractCompaniesForSelectedName = useMemo(() => {
+    if (!contractForm.company_name) return [];
+    return companies
+      .filter((c) => c.name === contractForm.company_name && (c.fiscal_name ?? "").trim().length > 0)
+      .sort((a, b) => (a.fiscal_name ?? "").localeCompare(b.fiscal_name ?? "", "es", { sensitivity: "base" }));
+  }, [companies, contractForm.company_name]);
+  const contractFiscalNameOptions = useMemo(() => {
+    return Array.from(
+      new Set(
+        contractCompaniesForSelectedName
+          .map((c) => (c.fiscal_name ?? "").trim())
+          .filter((name) => name.length > 0)
+      )
+    ).sort((a, b) => a.localeCompare(b, "es", { sensitivity: "base" }));
+  }, [contractCompaniesForSelectedName]);
+  const selectedContractCompanyId = useMemo(() => parseCode(contractForm.company_id), [contractForm.company_id]);
+  const selectedContractCode = useMemo(() => parseCode(contractForm.contract_code), [contractForm.contract_code]);
+  const contractSectorNameById = useMemo(() => {
+    const m = new Map<number, string>();
+    contractSectorOptions.forEach((sector) => m.set(sector.id, sector.sector_name));
+    return m;
+  }, [contractSectorOptions]);
+  const contractCodeByCode = useMemo(() => {
+    const m = new Map<number, ContractCodeCatalogItem>();
+    contractCodeOptions.forEach((item) => m.set(item.code, item));
+    return m;
+  }, [contractCodeOptions]);
+  const selectedContractCodeItem = useMemo(
+    () => (selectedContractCode ? contractCodeByCode.get(selectedContractCode) ?? null : null),
+    [contractCodeByCode, selectedContractCode]
+  );
+  useEffect(() => {
+    setContractForm((f) => {
+      if (!f.company_name) {
+        if (!f.company_fiscal_name && !f.company_id && !f.company_cif) {
+          return f;
+        }
+        return {
+          ...f,
+          company_fiscal_name: "",
+          company_id: "",
+          company_cif: "",
+        };
+      }
+
+      const fiscalSet = new Set(contractFiscalNameOptions);
+      let nextFiscalName = f.company_fiscal_name;
+      let nextCompanyId = f.company_id;
+      let nextCompanyCif = f.company_cif;
+
+      if (nextFiscalName && !fiscalSet.has(nextFiscalName)) {
+        nextFiscalName = "";
+        nextCompanyId = "";
+        nextCompanyCif = "";
+      }
+
+      if (!nextFiscalName && contractFiscalNameOptions.length === 1) {
+        nextFiscalName = contractFiscalNameOptions[0];
+      }
+
+      if (nextFiscalName) {
+        const matchedCompany = contractCompaniesForSelectedName.find(
+          (c) => (c.fiscal_name ?? "").trim() === nextFiscalName
+        );
+        const matchedCompanyId = matchedCompany ? String(matchedCompany.id) : "";
+        const matchedCompanyCif = matchedCompany?.cif ?? "";
+        if (nextCompanyId !== matchedCompanyId) nextCompanyId = matchedCompanyId;
+        if (nextCompanyCif !== matchedCompanyCif) nextCompanyCif = matchedCompanyCif;
+      } else {
+        nextCompanyId = "";
+        nextCompanyCif = "";
+      }
+
+      if (
+        nextFiscalName === f.company_fiscal_name &&
+        nextCompanyId === f.company_id &&
+        nextCompanyCif === f.company_cif
+      ) {
+        return f;
+      }
+
+      return {
+        ...f,
+        company_fiscal_name: nextFiscalName,
+        company_id: nextCompanyId,
+        company_cif: nextCompanyCif,
+      };
+    });
+  }, [contractCompaniesForSelectedName, contractFiscalNameOptions, contractForm.company_name]);
 
   const courseItineraryOptions = useMemo(() => {
     return [...courseItinerariesCatalog].sort((a, b) =>
@@ -1152,7 +1087,8 @@ export default function StudentDetailPage() {
 
   async function fetchAll(currentSid: string) {
     const n = Number(currentSid);
-    const [sRes, vRes, cRes, iRes, ecRes, invRes, practicesRes, hcRes, ciRes, mRes] = await Promise.all([
+    const [sRes, vRes, cRes, iRes, ecRes, invRes, practicesRes, hcRes, ciRes, sectorsRes, codesRes, mRes] =
+      await Promise.all([
       api.get<Student>(`/students/${currentSid}`),
       api.get<Vacancy[]>(`/vacancies`),
       api.get<Company[]>(`/companies`),
@@ -1162,10 +1098,26 @@ export default function StudentDetailPage() {
       api.get<PracticeRow[]>(`/practices`, { params: { student_id: n } }),
       api.get<HiringContractRow[]>(`/hiring-contracts`, { params: { student_id: n } }),
       api.get<CourseItineraryCatalogRow[]>(`/course-itineraries`),
+      api.get(`/companies/sectors`),
+      api.get(`/contract-codes`),
       api.get<MatchingVacancyApiRow[]>(`/matching/vacancies`, { params: { studentId: n, limit: 500 } }),
     ]);
 
     const rec = Array.isArray(mRes.data) ? mRes.data : [];
+    const sectors = (Array.isArray(sectorsRes.data) ? sectorsRes.data : [])
+      .map((row: any) => ({
+        id: Number(row?.id),
+        sector_name: (row?.sector_name ?? row?.name ?? "").toString(),
+      }))
+      .filter((row) => Number.isFinite(row.id) && row.sector_name.trim().length > 0) as SectorCatalogItem[];
+    const contractCodes = (Array.isArray(codesRes.data) ? codesRes.data : [])
+      .map((row: any) => ({
+        code: Number(row?.code),
+        contract_type: (row?.contract_type ?? row?.type ?? "").toString(),
+        workday: (row?.workday ?? row?.jornada ?? "").toString(),
+        hiring_mode: (row?.hiring_mode ?? row?.hiring ?? row?.contratacion ?? "").toString(),
+      }))
+      .filter((row) => Number.isFinite(row.code)) as ContractCodeCatalogItem[];
 
     return {
       student: sRes.data,
@@ -1177,6 +1129,8 @@ export default function StudentDetailPage() {
       practiceRows: Array.isArray(practicesRes.data) ? practicesRes.data : [],
       contracts: Array.isArray(hcRes.data) ? hcRes.data : [],
       courseItinerariesCatalog: Array.isArray(ciRes.data) ? ciRes.data : [],
+      contractSectorOptions: sectors.sort((a, b) => a.sector_name.localeCompare(b.sector_name, "es", { sensitivity: "base" })),
+      contractCodeOptions: contractCodes.sort((a, b) => a.code - b.code),
       recommended: rec
         .map((v) => ({ vacancy: v, score: Number((v as any).score) }))
         .filter((x) => Number.isFinite(x.score) && x.score >= 50),
@@ -1241,6 +1195,8 @@ export default function StudentDetailPage() {
         setInvitations(data.invitations);
         setPracticeRows(data.practiceRows);
         setContracts(data.contracts);
+        setContractSectorOptions(data.contractSectorOptions);
+        setContractCodeOptions(data.contractCodeOptions);
         setRecommended(data.recommended);
       })
       .catch((err) => {
@@ -1796,22 +1752,32 @@ export default function StudentDetailPage() {
   }
 
   function startEditContract(c: HiringContractRow) {
-    const contractNumber = (c.sector ?? "").trim();
-    const catalogItem = getContractCatalogItem(contractNumber);
+    const companyById = c.company_id != null ? companies.find((co) => co.id === c.company_id) ?? null : null;
+    const companyByFields =
+      companyById ??
+      companies.find(
+        (co) =>
+          ((c.company_name ?? "").trim().length > 0 && co.name === c.company_name) &&
+          ((c.company_cif ?? "").trim().length === 0 || co.cif === c.company_cif)
+      ) ??
+      null;
     setContractFormMode("edit");
     setContractForm({
       id: c.id,
-      company_nif: c.company_nif,
-      company_name: c.company_name,
-      sector: contractNumber,
+      expediente: c.expediente ?? "",
+      sector_id: c.sector_id != null ? String(c.sector_id) : "",
+      position: c.position ?? "",
+      company_id: companyByFields ? String(companyByFields.id) : c.company_id != null ? String(c.company_id) : "",
+      company_name: companyByFields?.name ?? c.company_name ?? "",
+      company_fiscal_name: companyByFields?.fiscal_name ?? c.company_fiscal_name ?? "",
+      company_cif: companyByFields?.cif ?? c.company_cif ?? "",
+      is_itinerary_company_contract: normalizeSiNoText(c.is_itinerary_company_contract),
+      contract_code: c.contract_code != null ? String(c.contract_code) : "",
+      attached_contract: normalizeSiNoText(c.attached_contract),
+      attached_work_life: normalizeSiNoText(c.attached_work_life),
+      observations: c.observations ?? "",
       start_date: fmtDate(c.start_date),
       end_date: fmtDate(c.end_date),
-      workday_pct: catalogItem?.jornada ?? c.workday_pct ?? "",
-      contribution_group: c.contribution_group ?? "",
-      contract_type: catalogItem?.tipo ?? c.contract_type ?? "",
-      weekly_hours: c.weekly_hours != null ? String(c.weekly_hours) : "",
-      contributed_days: c.contributed_days != null ? String(c.contributed_days) : "",
-      notes: c.notes ?? "",
     });
   }
 
@@ -1822,26 +1788,41 @@ export default function StudentDetailPage() {
 
   async function saveContract() {
     if (!contractFormMode) return;
-    const n = Number(sid);
-    if (!Number.isFinite(n) || !contractForm.company_nif.trim() || !contractForm.company_name.trim() || !contractForm.start_date) return;
+    if (!sid) return;
+
+    const sectorId = parseCode(contractForm.sector_id);
+    const companyId = parseCode(contractForm.company_id);
+    const contractCode = parseCode(contractForm.contract_code);
+    if (
+      !contractForm.expediente.trim() ||
+      !sectorId ||
+      !contractForm.position.trim() ||
+      !companyId ||
+      !contractCode ||
+      !contractForm.start_date
+    ) {
+      setActionError(
+        "Debes completar Expediente, Sector, Puesto, Nombre fiscal de empresa, Código de contrato laboral y Fecha inicio."
+      );
+      return;
+    }
 
     try {
       setActionError(null);
       setContractSaving(true);
 
       const payload = {
-        student_id: n,
-        company_nif: contractForm.company_nif,
-        company_name: contractForm.company_name,
-        sector: contractForm.sector.trim() || null,
-        start_date: contractForm.start_date,
+        expediente: contractForm.expediente.trim(),
+        sector_id: sectorId,
+        position: contractForm.position.trim(),
+        company_id: companyId,
+        is_itinerary_company_contract: normalizeSiNoText(contractForm.is_itinerary_company_contract),
+        contract_code: contractCode,
+        attached_contract: normalizeSiNoText(contractForm.attached_contract),
+        attached_work_life: normalizeSiNoText(contractForm.attached_work_life),
+        observations: contractForm.observations.trim() || null,
+        start_date: contractForm.start_date || null,
         end_date: contractForm.end_date || null,
-        workday_pct: contractForm.workday_pct || null,
-        contribution_group: contractForm.contribution_group || null,
-        contract_type: contractForm.contract_type || null,
-        weekly_hours: toIntOrNull(contractForm.weekly_hours),
-        contributed_days: toIntOrNull(contractForm.contributed_days),
-        notes: contractForm.notes || null,
       };
 
       if (contractFormMode === "edit" && contractForm.id) {
@@ -1853,7 +1834,7 @@ export default function StudentDetailPage() {
       await refreshContracts();
       cancelContractForm();
     } catch (e: any) {
-      setActionError(e?.response?.data?.error || e?.message || "Error al guardar contrato");
+      setActionError(e?.response?.data?.error || e?.message || "Error al guardar contratación");
     } finally {
       setContractSaving(false);
     }
@@ -2235,150 +2216,154 @@ export default function StudentDetailPage() {
               </Grid>
 
               <Grid size={{ xs: 12, md: 6 }} sx={{ display: "flex" }}>
-                <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, flex: 1, display: "flex", flexDirection: "column" }}>
-                  <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
-                    <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                      Vacantes recomendadas ({recommended.length})
-                    </Typography>
-                    {recommended.length > 2 ? (
-                      <Button size="small" variant="outlined" onClick={() => setRecommendedOpen(true)}>
-                        Ver todas
-                      </Button>
-                    ) : null}
-                  </Stack>
-                  <Divider sx={{ mb: 1.5 }} />
-
-                  {recommendedTop2.length ? (
-                    <Stack spacing={1.2}>
-                      {recommendedTop2.map(({ vacancy, score }) => (
-                        <Paper key={vacancy.id} variant="outlined" sx={{ p: 1.2, borderRadius: 2 }}>
-                          <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
-                            <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>
-                              {vacancy.title}
-                            </Typography>
-                            <Chip size="small" label={`${score}%`} color={scoreColor(score)} />
-                          </Stack>
-                          {vacancy.description ? (
-                            <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
-                              {vacancy.description}
-                            </Typography>
-                          ) : null}
-                          <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
-                            {companyName.get(vacancy.company_id) || `ID #${vacancy.company_id}`} · {vacancy.sector ?? "-"}
+                <Stack spacing={2} sx={{ flex: 1, minHeight: 0 }}>
+                  <Grid container spacing={2} alignItems="stretch">
+                    <Grid size={{ xs: 12, sm: 6 }} sx={{ display: "flex" }}>
+                      <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, flex: 1 }}>
+                        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+                          <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                            Invitaciones ({invitations.length})
                           </Typography>
-                        </Paper>
-                      ))}
-                    </Stack>
-                  ) : (
-                    <Typography color="text.secondary">No hay recomendaciones para este perfil aún.</Typography>
-                  )}
-                </Paper>
-              </Grid>
-            </Grid>
-
-            {/* Entrevistas + Invitaciones */}
-            <Grid container spacing={2}>
-              <Grid size={{ xs: 12, md: 6 }}>
-                <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, height: "100%" }}>
-                  <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
-                    <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                      Entrevistas ({interviews.length})
-                    </Typography>
-                    <Button size="small" variant="outlined" onClick={() => setInterviewsOpen(true)}>
-                      Ver
-                    </Button>
-                  </Stack>
-                  <Divider sx={{ mb: 1.5 }} />
-                  <Stack spacing={1.5}>
-                    <Stack direction="row" spacing={2} alignItems="center">
-                      <DonutChart slices={interviewsChartSlices} size={76} thickness={12} />
-                      <Stack spacing={0.25} sx={{ flex: 1 }}>
-                        <Typography variant="caption" color="text.secondary">
-                          Enviadas: {interviewsSent}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          Asistidas: {interviewsAttended}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          No asistió: {interviewsNoShow}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          Contratos: {contracts.length}
-                        </Typography>
-                      </Stack>
-                    </Stack>
-
-                    {interviews.length ? (
-                      <Stack spacing={1}>
-                        {interviews.slice(0, 2).map((i) => (
-                          <Box key={i.id}>
-                            <Stack direction="row" spacing={1} alignItems="center">
-                              <Typography variant="body2">{formatDateDMY(i.interview_date)}</Typography>
-                              {interviewStatusChip(i.status)}
-                            </Stack>
-                            <Typography variant="caption" color="text.secondary">
-                              {i.place ?? "-"}
-                            </Typography>
-                          </Box>
-                        ))}
-                      </Stack>
-                    ) : (
-                      <Typography color="text.secondary">Sin entrevistas</Typography>
-                    )}
-                  </Stack>
-                </Paper>
-              </Grid>
-
-              <Grid size={{ xs: 12, md: 6 }}>
-                <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, height: "100%" }}>
-                  <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
-                    <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                      Invitaciones ({invitations.length})
-                    </Typography>
-                    <Button size="small" variant="outlined" onClick={openInvitationsDialog}>
-                      Ver
-                    </Button>
-                  </Stack>
-                  <Divider sx={{ mb: 1.5 }} />
-                  <Stack spacing={1.5}>
-                    <Stack direction="row" spacing={2} alignItems="center">
-                      <DonutChart slices={invitationsChartSlices} size={76} thickness={12} />
-                      <Stack spacing={0.25} sx={{ flex: 1 }}>
-                        <Typography variant="caption" color="text.secondary">
-                          Enviadas: {invitations.length}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          Generaron entrevista: {invitationsAccepted}
-                        </Typography>
-                      </Stack>
-                    </Stack>
-
-                    {invitations.length ? (
-                      <Stack spacing={1}>
-                        {invitations.slice(0, 2).map((inv) => (
-                          <Box key={inv.id}>
-                            <Stack direction="row" spacing={1} alignItems="center">
-                              <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                                {inv.vacancy_title}
+                          <Button size="small" variant="outlined" onClick={openInvitationsDialog}>
+                            Ver
+                          </Button>
+                        </Stack>
+                        <Divider sx={{ mb: 1.5 }} />
+                        <Stack spacing={1.5}>
+                          <Stack direction="row" spacing={2} alignItems="center">
+                            <DonutChart slices={invitationsChartSlices} size={76} thickness={12} />
+                            <Stack spacing={0.25} sx={{ flex: 1 }}>
+                              <Typography variant="caption" color="text.secondary">
+                                Enviadas: {invitations.length}
                               </Typography>
-                              {statusChip(inv.status)}
+                              <Typography variant="caption" color="text.secondary">
+                                Generaron entrevista: {invitationsAccepted}
+                              </Typography>
                             </Stack>
-                            <Typography variant="caption" color="text.secondary">
-                              {inv.company_name} · {formatDateDMY(inv.sent_at)}
+                          </Stack>
+
+                          {invitations.length ? (
+                            <Stack spacing={1}>
+                              {invitations.slice(0, 2).map((inv) => (
+                                <Box key={inv.id}>
+                                  <Stack direction="row" spacing={1} alignItems="center">
+                                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                      {inv.vacancy_title}
+                                    </Typography>
+                                    {statusChip(inv.status)}
+                                  </Stack>
+                                  <Typography variant="caption" color="text.secondary">
+                                    {inv.company_name} · {formatDateDMY(inv.sent_at)}
+                                  </Typography>
+                                </Box>
+                              ))}
+                            </Stack>
+                          ) : (
+                            <Typography color="text.secondary">Sin invitaciones</Typography>
+                          )}
+                        </Stack>
+                      </Paper>
+                    </Grid>
+
+                    <Grid size={{ xs: 12, sm: 6 }} sx={{ display: "flex" }}>
+                      <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, flex: 1 }}>
+                        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+                          <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                            Entrevistas ({interviews.length})
+                          </Typography>
+                          <Button size="small" variant="outlined" onClick={() => setInterviewsOpen(true)}>
+                            Ver
+                          </Button>
+                        </Stack>
+                        <Divider sx={{ mb: 1.5 }} />
+                        <Stack spacing={1.5}>
+                          <Stack direction="row" spacing={2} alignItems="center">
+                            <DonutChart slices={interviewsChartSlices} size={76} thickness={12} />
+                            <Stack spacing={0.25} sx={{ flex: 1 }}>
+                              <Typography variant="caption" color="text.secondary">
+                                Enviadas: {interviewsSent}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                Asistidas: {interviewsAttended}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                No asistió: {interviewsNoShow}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                Contratos: {contracts.length}
+                              </Typography>
+                            </Stack>
+                          </Stack>
+
+                          {interviews.length ? (
+                            <Stack spacing={1}>
+                              {interviews.slice(0, 2).map((i) => (
+                                <Box key={i.id}>
+                                  <Stack direction="row" spacing={1} alignItems="center">
+                                    <Typography variant="body2">{formatDateDMY(i.interview_date)}</Typography>
+                                    {interviewStatusChip(i.status)}
+                                  </Stack>
+                                  <Typography variant="caption" color="text.secondary">
+                                    {i.place ?? "-"}
+                                  </Typography>
+                                </Box>
+                              ))}
+                            </Stack>
+                          ) : (
+                            <Typography color="text.secondary">Sin entrevistas</Typography>
+                          )}
+                        </Stack>
+                      </Paper>
+                    </Grid>
+                  </Grid>
+
+                  <Paper
+                    variant="outlined"
+                    sx={{ p: 2, borderRadius: 2, flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}
+                  >
+                    <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+                      <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                        Vacantes recomendadas ({recommended.length})
+                      </Typography>
+                      {recommended.length > 2 ? (
+                        <Button size="small" variant="outlined" onClick={() => setRecommendedOpen(true)}>
+                          Ver todas
+                        </Button>
+                      ) : null}
+                    </Stack>
+                    <Divider sx={{ mb: 1.5 }} />
+
+                    {recommendedTop2.length ? (
+                      <Stack spacing={1.2}>
+                        {recommendedTop2.map(({ vacancy, score }) => (
+                          <Paper key={vacancy.id} variant="outlined" sx={{ p: 1.2, borderRadius: 2 }}>
+                            <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+                              <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>
+                                {vacancy.title}
+                              </Typography>
+                              <Chip size="small" label={`${score}%`} color={scoreColor(score)} />
+                            </Stack>
+                            {vacancy.description ? (
+                              <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+                                {vacancy.description}
+                              </Typography>
+                            ) : null}
+                            <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+                              {companyName.get(vacancy.company_id) || `ID #${vacancy.company_id}`} · {vacancy.sector ?? "-"}
                             </Typography>
-                          </Box>
+                          </Paper>
                         ))}
                       </Stack>
                     ) : (
-                      <Typography color="text.secondary">Sin invitaciones</Typography>
+                      <Typography color="text.secondary">No hay recomendaciones para este perfil aún.</Typography>
                     )}
-                  </Stack>
-                </Paper>
+                  </Paper>
+                </Stack>
               </Grid>
             </Grid>
 
             {/* Prácticas + Contrataciones */}
-            <Grid container spacing={2}>
+            <Grid container spacing={2} sx={{ order: 3 }}>
               <Grid size={{ xs: 12, md: 6 }}>
                 <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, height: "100%" }}>
                   <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
@@ -2433,10 +2418,17 @@ export default function StudentDetailPage() {
                       {contractsSummary.map((c) => (
                         <Box key={c.id}>
                           <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                            {c.company_name}
+                            {c.company_name || "-"}
                           </Typography>
                           <Typography variant="caption" color="text.secondary">
-                            {(c.contract_type || "-") + " · " + formatDateDMY(c.start_date) + " → " + formatDateDMY(c.end_date)}
+                            {`${c.position || "-"} · ${
+                              c.sector_name ||
+                              (c.sector_id != null ? contractSectorNameById.get(c.sector_id) : "") ||
+                              "-"
+                            } · ${
+                              (c.contract_code != null && (contractCodeByCode.get(c.contract_code)?.contract_type || `Código ${c.contract_code}`)) ||
+                              "-"
+                            } · ${formatDateDMY(c.start_date)} → ${formatDateDMY(c.end_date)}`}
                           </Typography>
                         </Box>
                       ))}
@@ -2449,7 +2441,7 @@ export default function StudentDetailPage() {
             </Grid>
 
             {/* Cursos */}
-            <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+            <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, order: 2 }}>
               <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
                 <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
                   Cursos realizados ({totalCoursesCount})
@@ -3754,64 +3746,187 @@ export default function StudentDetailPage() {
                     {contractFormMode === "edit" ? "Editar contratación" : "Nueva contratación"}
                   </Typography>
                   <Grid container spacing={2}>
+                    <Grid size={{ xs: 12, md: 4 }}>
+                      <TextField
+                        select
+                        label="Expediente"
+                        size="small"
+                        fullWidth
+                        value={contractForm.expediente}
+                        onChange={(e) => setContractForm((f) => ({ ...f, expediente: e.target.value }))}
+                      >
+                        <MenuItem value="">
+                          <em>Selecciona expediente</em>
+                        </MenuItem>
+                        {enrolledCourses.map((c) => (
+                          <MenuItem key={c.expediente} value={c.expediente}>
+                            {`${c.expediente} · ${c.itinerary_name || c.course_code}`}
+                          </MenuItem>
+                        ))}
+                      </TextField>
+                    </Grid>
+                    <Grid size={{ xs: 12, md: 4 }}>
+                      <TextField
+                        select
+                        label="Sector"
+                        size="small"
+                        fullWidth
+                        value={contractForm.sector_id}
+                        onChange={(e) => setContractForm((f) => ({ ...f, sector_id: e.target.value }))}
+                      >
+                        <MenuItem value="">
+                          <em>Selecciona sector</em>
+                        </MenuItem>
+                        {contractSectorOptions.map((sector) => (
+                          <MenuItem key={sector.id} value={String(sector.id)}>
+                            {sector.sector_name}
+                          </MenuItem>
+                        ))}
+                      </TextField>
+                    </Grid>
+                    <Grid size={{ xs: 12, md: 4 }}>
+                      <TextField
+                        label="Puesto"
+                        size="small"
+                        fullWidth
+                        value={contractForm.position}
+                        onChange={(e) => setContractForm((f) => ({ ...f, position: e.target.value }))}
+                      />
+                    </Grid>
+
                     <Grid size={{ xs: 12, md: 6 }}>
                       <TextField
-                        label="Empresa"
+                        select
+                        label="Nombre comercial de empresa"
                         size="small"
                         fullWidth
                         value={contractForm.company_name}
-                        onChange={(e) => setContractForm((f) => ({ ...f, company_name: e.target.value }))}
-                        InputLabelProps={{ shrink: true }}
+                        onChange={(e) =>
+                          setContractForm((f) => ({
+                            ...f,
+                            company_name: e.target.value,
+                            company_fiscal_name: "",
+                            company_id: "",
+                            company_cif: "",
+                          }))
+                        }
+                      >
+                        <MenuItem value="">
+                          <em>Selecciona nombre comercial</em>
+                        </MenuItem>
+                        {contractCompanyNameOptions.map((nameOption) => (
+                          <MenuItem key={nameOption} value={nameOption}>
+                            {nameOption}
+                          </MenuItem>
+                        ))}
+                      </TextField>
+                    </Grid>
+                    <Grid size={{ xs: 12, md: 6 }}>
+                      <TextField
+                        select
+                        label="Nombre fiscal de empresa"
+                        size="small"
+                        fullWidth
+                        disabled={!contractForm.company_name}
+                        value={contractForm.company_fiscal_name}
+                        onChange={(e) => {
+                          const nextFiscalName = e.target.value;
+                          const matchedCompany = contractCompaniesForSelectedName.find(
+                            (c) => (c.fiscal_name ?? "").trim() === nextFiscalName
+                          );
+                          setContractForm((f) => ({
+                            ...f,
+                            company_fiscal_name: nextFiscalName,
+                            company_id: matchedCompany ? String(matchedCompany.id) : "",
+                            company_cif: matchedCompany?.cif ?? "",
+                          }));
+                        }}
+                      >
+                        <MenuItem value="">
+                          <em>Selecciona nombre fiscal</em>
+                        </MenuItem>
+                        {contractFiscalNameOptions.map((fiscalNameOption) => (
+                          <MenuItem key={fiscalNameOption} value={fiscalNameOption}>
+                            {fiscalNameOption}
+                          </MenuItem>
+                        ))}
+                      </TextField>
+                    </Grid>
+                    <Grid size={{ xs: 12, md: 6 }}>
+                      <TextField
+                        label="CIF empresa"
+                        size="small"
+                        fullWidth
+                        value={contractForm.company_cif}
+                        InputProps={{ readOnly: true }}
                       />
                     </Grid>
                     <Grid size={{ xs: 12, md: 6 }}>
                       <TextField
-                        label="NIF empresa"
+                        label="ID empresa"
                         size="small"
                         fullWidth
-                        value={contractForm.company_nif}
-                        onChange={(e) => setContractForm((f) => ({ ...f, company_nif: e.target.value }))}
-                        InputLabelProps={{ shrink: true }}
-                      />
-                    </Grid>
-
-                    <Grid size={{ xs: 12, md: 4 }}>
-                      <TextField
-                        label="Nº de Contrato"
-                        type="number"
-                        size="small"
-                        fullWidth
-                        value={contractForm.sector}
-                        onChange={(e) => applyContractNumberToForm(e.target.value)}
-                        helperText={
-                          contractForm.sector && !selectedContractCatalog
-                            ? "Número no encontrado en la tabla base."
-                            : "Introduce el número según la tabla base."
-                        }
-                        InputProps={{ inputProps: { min: 0 } }}
-                        InputLabelProps={{ shrink: true }}
-                      />
-                    </Grid>
-
-                    <Grid size={{ xs: 12, md: 4 }}>
-                      <TextField
-                        label="Tipo de Contrato"
-                        size="small"
-                        fullWidth
-                        value={contractForm.contract_type}
+                        value={selectedContractCompanyId ? String(selectedContractCompanyId) : ""}
                         InputProps={{ readOnly: true }}
-                        InputLabelProps={{ shrink: true }}
                       />
                     </Grid>
 
+                    <Grid size={{ xs: 12, md: 4 }}>
+                      <TextField
+                        select
+                        label="Contrato empresa itinerario"
+                        size="small"
+                        fullWidth
+                        value={contractForm.is_itinerary_company_contract}
+                        onChange={(e) =>
+                          setContractForm((f) => ({
+                            ...f,
+                            is_itinerary_company_contract: e.target.value as (typeof SI_NO_OPTIONS)[number],
+                          }))
+                        }
+                      >
+                        {SI_NO_OPTIONS.map((opt) => (
+                          <MenuItem key={opt} value={opt}>
+                            {opt}
+                          </MenuItem>
+                        ))}
+                      </TextField>
+                    </Grid>
+                    <Grid size={{ xs: 12, md: 4 }}>
+                      <TextField
+                        select
+                        label="Código de contrato laboral"
+                        size="small"
+                        fullWidth
+                        value={contractForm.contract_code}
+                        onChange={(e) => setContractForm((f) => ({ ...f, contract_code: e.target.value }))}
+                      >
+                        <MenuItem value="">
+                          <em>Selecciona código</em>
+                        </MenuItem>
+                        {contractCodeOptions.map((codeOption) => (
+                          <MenuItem key={codeOption.code} value={String(codeOption.code)}>
+                            {`${codeOption.code} · ${codeOption.contract_type}`}
+                          </MenuItem>
+                        ))}
+                      </TextField>
+                    </Grid>
+                    <Grid size={{ xs: 12, md: 4 }}>
+                      <TextField
+                        label="Tipo de contrato"
+                        size="small"
+                        fullWidth
+                        value={selectedContractCodeItem?.contract_type ?? ""}
+                        InputProps={{ readOnly: true }}
+                      />
+                    </Grid>
                     <Grid size={{ xs: 12, md: 4 }}>
                       <TextField
                         label="Jornada"
                         size="small"
                         fullWidth
-                        value={contractForm.workday_pct}
+                        value={selectedContractCodeItem?.workday ?? ""}
                         InputProps={{ readOnly: true }}
-                        InputLabelProps={{ shrink: true }}
                       />
                     </Grid>
                     <Grid size={{ xs: 12, md: 4 }}>
@@ -3819,40 +3934,55 @@ export default function StudentDetailPage() {
                         label="Contratación"
                         size="small"
                         fullWidth
-                        value={selectedContractCatalog?.contratacion ?? ""}
+                        value={selectedContractCodeItem?.hiring_mode ?? ""}
                         InputProps={{ readOnly: true }}
-                        InputLabelProps={{ shrink: true }}
                       />
                     </Grid>
-
-                    <Grid size={{ xs: 12 }}>
+                    <Grid size={{ xs: 12, md: 4 }}>
                       <TextField
                         select
-                        label="Grupo Cotización"
+                        label="Adjunta contrato"
                         size="small"
                         fullWidth
-                        value={contractForm.contribution_group}
-                        onChange={(e) => setContractForm((f) => ({ ...f, contribution_group: e.target.value }))}
-                        InputLabelProps={{ shrink: true }}
+                        value={contractForm.attached_contract}
+                        onChange={(e) =>
+                          setContractForm((f) => ({
+                            ...f,
+                            attached_contract: e.target.value as (typeof SI_NO_OPTIONS)[number],
+                          }))
+                        }
                       >
-                        <MenuItem value="">
-                          <em>—</em>
-                        </MenuItem>
-                        {contractForm.contribution_group &&
-                          !CONTRIBUTION_GROUP_OPTIONS.includes(contractForm.contribution_group as any) && (
-                            <MenuItem value={contractForm.contribution_group}>{contractForm.contribution_group} (actual)</MenuItem>
-                          )}
-                        {CONTRIBUTION_GROUP_OPTIONS.map((opt) => (
+                        {SI_NO_OPTIONS.map((opt) => (
                           <MenuItem key={opt} value={opt}>
                             {opt}
                           </MenuItem>
                         ))}
                       </TextField>
                     </Grid>
-
                     <Grid size={{ xs: 12, md: 4 }}>
+                      <TextField
+                        select
+                        label="Adjunta vida laboral"
+                        size="small"
+                        fullWidth
+                        value={contractForm.attached_work_life}
+                        onChange={(e) =>
+                          setContractForm((f) => ({
+                            ...f,
+                            attached_work_life: e.target.value as (typeof SI_NO_OPTIONS)[number],
+                          }))
+                        }
+                      >
+                        {SI_NO_OPTIONS.map((opt) => (
+                          <MenuItem key={opt} value={opt}>
+                            {opt}
+                          </MenuItem>
+                        ))}
+                      </TextField>
+                    </Grid>
+                    <Grid size={{ xs: 12, md: 6 }}>
                       <DateTextField
-                        label="Fecha de alta"
+                        label="Fecha inicio"
                         size="small"
                         fullWidth
                         value={contractForm.start_date}
@@ -3860,10 +3990,9 @@ export default function StudentDetailPage() {
                         placeholder="dd/mm/aaaa"
                       />
                     </Grid>
-
-                    <Grid size={{ xs: 12, md: 4 }}>
+                    <Grid size={{ xs: 12, md: 6 }}>
                       <DateTextField
-                        label="Fecha de baja"
+                        label="Fecha fin"
                         size="small"
                         fullWidth
                         value={contractForm.end_date}
@@ -3871,41 +4000,15 @@ export default function StudentDetailPage() {
                         placeholder="dd/mm/aaaa"
                       />
                     </Grid>
-
-                    <Grid size={{ xs: 12, md: 2 }}>
-                      <TextField
-                        label="Horas/sem"
-                        type="number"
-                        size="small"
-                        fullWidth
-                        value={contractForm.weekly_hours}
-                        onChange={(e) => setContractForm((f) => ({ ...f, weekly_hours: e.target.value }))}
-                        InputLabelProps={{ shrink: true }}
-                      />
-                    </Grid>
-
-                    <Grid size={{ xs: 12, md: 2 }}>
-                      <TextField
-                        label="Días cotizados"
-                        type="number"
-                        size="small"
-                        fullWidth
-                        value={contractForm.contributed_days}
-                        onChange={(e) => setContractForm((f) => ({ ...f, contributed_days: e.target.value }))}
-                        InputLabelProps={{ shrink: true }}
-                      />
-                    </Grid>
-
                     <Grid size={{ xs: 12 }}>
                       <TextField
-                        label="Notas"
+                        label="Observaciones"
                         size="small"
                         fullWidth
                         multiline
                         minRows={2}
-                        value={contractForm.notes}
-                        onChange={(e) => setContractForm((f) => ({ ...f, notes: e.target.value }))}
-                        InputLabelProps={{ shrink: true }}
+                        value={contractForm.observations}
+                        onChange={(e) => setContractForm((f) => ({ ...f, observations: e.target.value }))}
                       />
                     </Grid>
 
@@ -3914,17 +4017,9 @@ export default function StudentDetailPage() {
                         <Button variant="outlined" disabled={contractSaving} onClick={cancelContractForm}>
                           Cancelar
                         </Button>
-                        <Button variant="outlined" startIcon={<UploadFileIcon />} disabled={contractSaving}>
-                          Nueva desde PDF
-                        </Button>
                         <Button
                           variant="contained"
-                          disabled={
-                            contractSaving ||
-                            !contractForm.company_nif.trim() ||
-                            !contractForm.company_name.trim() ||
-                            !contractForm.start_date
-                          }
+                          disabled={contractSaving || !contractForm.expediente.trim() || !contractForm.start_date}
                           onClick={saveContract}
                         >
                           Guardar
@@ -3938,44 +4033,52 @@ export default function StudentDetailPage() {
 
             <Paper variant="outlined" sx={{ borderRadius: 2 }}>
               <Box sx={{ overflowX: "auto" }}>
-                <Table size="small" sx={{ minWidth: 1600 }}>
+                <Table size="small" sx={{ minWidth: 1700 }}>
                   <TableHead>
                     <TableRow>
+                      <TableCell>Expediente</TableCell>
                       <TableCell>Empresa</TableCell>
                       <TableCell>Sector</TableCell>
-                      <TableCell sx={{ whiteSpace: "nowrap" }}>Tipo de contrato</TableCell>
-                      <TableCell>Jornada</TableCell>
-                      <TableCell sx={{ whiteSpace: "nowrap" }}>Grupo Cotización</TableCell>
-                      <TableCell>Horas/sem</TableCell>
-                      <TableCell>Días cotizados</TableCell>
-                      <TableCell sx={{ whiteSpace: "nowrap" }}>Fecha de alta</TableCell>
-                      <TableCell sx={{ whiteSpace: "nowrap" }}>Fecha de baja</TableCell>
-                      <TableCell>Notas</TableCell>
+                      <TableCell>Puesto</TableCell>
+                      <TableCell>Contrato empresa itinerario</TableCell>
+                      <TableCell>Código contrato</TableCell>
+                      <TableCell>Adjunta contrato</TableCell>
+                      <TableCell>Adjunta vida laboral</TableCell>
+                      <TableCell sx={{ whiteSpace: "nowrap" }}>Fecha inicio</TableCell>
+                      <TableCell sx={{ whiteSpace: "nowrap" }}>Fecha fin</TableCell>
+                      <TableCell>Observaciones</TableCell>
                       <TableCell align="right">Acciones</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {contractsSorted.map((c) => (
                       <TableRow key={c.id} hover>
+                        <TableCell>{c.expediente ?? "-"}</TableCell>
                         <TableCell>
                           <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                            {c.company_name}
+                            {c.company_name ?? "-"}
                           </Typography>
                           <Typography variant="caption" color="text.secondary">
-                            {c.company_nif}
+                            {c.company_cif ?? "-"}
                           </Typography>
                         </TableCell>
-                        <TableCell>{c.sector ?? "-"}</TableCell>
-                        <TableCell>{c.contract_type ?? "-"}</TableCell>
-                        <TableCell>{c.workday_pct ?? "-"}</TableCell>
-                        <TableCell>{c.contribution_group ?? "-"}</TableCell>
-                        <TableCell>{c.weekly_hours ?? "-"}</TableCell>
-                        <TableCell>{c.contributed_days ?? "-"}</TableCell>
+                        <TableCell>{c.sector_name ?? (c.sector_id != null ? contractSectorNameById.get(c.sector_id) : "") ?? "-"}</TableCell>
+                        <TableCell>{c.position ?? "-"}</TableCell>
+                        <TableCell>{normalizeSiNoText(c.is_itinerary_company_contract)}</TableCell>
+                        <TableCell>
+                          {c.contract_code != null
+                            ? `${c.contract_code} · ${
+                                contractCodeByCode.get(c.contract_code)?.contract_type ?? ""
+                              }`.trim()
+                            : "-"}
+                        </TableCell>
+                        <TableCell>{normalizeSiNoText(c.attached_contract)}</TableCell>
+                        <TableCell>{normalizeSiNoText(c.attached_work_life)}</TableCell>
                         <TableCell sx={{ whiteSpace: "nowrap" }}>{formatDateDMY(c.start_date)}</TableCell>
                         <TableCell sx={{ whiteSpace: "nowrap" }}>{formatDateDMY(c.end_date)}</TableCell>
                         <TableCell>
                           <Typography variant="caption" color="text.secondary">
-                            {c.notes ?? ""}
+                            {c.observations ?? ""}
                           </Typography>
                         </TableCell>
                         <TableCell align="right">
@@ -3992,8 +4095,8 @@ export default function StudentDetailPage() {
                     ))}
                     {contracts.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={11} align="center" sx={{ py: 4, color: "text.secondary" }}>
-                          No hay contratos
+                        <TableCell colSpan={12} align="center" sx={{ py: 4, color: "text.secondary" }}>
+                          No hay contrataciones
                         </TableCell>
                       </TableRow>
                     )}
