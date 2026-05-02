@@ -166,13 +166,54 @@ const LEAVE_NOTIFICATION_OPTIONS: Array<EnrolledCourseForm["leave_notification"]
   "FIRMADA",
   "EXPULSION",
 ];
-const TIC_OPTIONS = ["SI", "NO"] as const;
-const STATUS_LABORAL_OPTIONS = [
-  "",
-  "Buscando empleo",
-  "Buscando mejorar empleo",
-  "Sin buscar empleo",
-] as const;
+type TicOption = "SI" | "NO";
+type StatusLaboralOption =
+  | ""
+  | "Buscando empleo"
+  | "Buscando mejorar empleo"
+  | "Sin buscar empleo";
+type StudentSex = "mujer" | "hombre" | "other" | "unknown";
+type StudentDraft = {
+  first_names: string;
+  last_names: string;
+  dni_nie: string;
+  social_security_number: string;
+  birth_date: string;
+  sex: StudentSex;
+  district_code: string;
+  municipality_code: string;
+  phone: string;
+  email: string;
+  tic: TicOption;
+  status_laboral: StatusLaboralOption;
+  notes: string;
+};
+type RouterLocationState = { from?: string };
+type SectorCatalogApiRow = {
+  id?: unknown;
+  sector_name?: unknown;
+  name?: unknown;
+};
+type ContractCodeCatalogApiRow = {
+  code?: unknown;
+  contract_type?: unknown;
+  type?: unknown;
+  workday?: unknown;
+  jornada?: unknown;
+  hiring_mode?: unknown;
+  hiring?: unknown;
+  contratacion?: unknown;
+};
+type ApiErrorLike = {
+  response?: {
+    status?: unknown;
+    data?: {
+      error?: unknown;
+      message?: unknown;
+    };
+  };
+  message?: unknown;
+};
 const PRACTICE_STATE_OPTIONS = ["SI", "NO", "INSERCION", "ACTUALIZAR"] as const;
 const PRACTICE_STATUS_OPTIONS = [
   "",
@@ -187,6 +228,12 @@ type InvitationFormMode = "create" | "edit";
 type EnrolledCourseFormMode = "create" | "edit" | null;
 type PracticeFormMode = "create" | "view" | "edit" | "delete";
 type ContractFormMode = "create" | "edit";
+type RecordDeleteTarget =
+  | { kind: "interview"; id: number; label: string }
+  | { kind: "invitation"; id: number; label: string }
+  | { kind: "enrolled_course"; expediente: string; label: string }
+  | { kind: "practice"; id: number; label: string }
+  | { kind: "contract"; id: number; label: string };
 
 const EMPTY_INVITATION_FORM = {
   vacancy_id: "",
@@ -267,6 +314,39 @@ function parseCode(value: string) {
 
 function normalizeSiNoText(value: unknown): "SI" | "NO" {
   return (value ?? "").toString().trim().toUpperCase() === "SI" ? "SI" : "NO";
+}
+function normalizeStudentSex(value: unknown): StudentSex {
+  const normalized = (value ?? "").toString().toLowerCase();
+  if (normalized === "mujer" || normalized === "hombre" || normalized === "other") {
+    return normalized;
+  }
+  return "unknown";
+}
+
+function getErrorStatus(error: unknown): number | null {
+  if (!error || typeof error !== "object") return null;
+  const status = (error as ApiErrorLike).response?.status;
+  return typeof status === "number" ? status : null;
+}
+
+function getErrorMessage(error: unknown): string | null {
+  if (!error || typeof error !== "object") {
+    return null;
+  }
+
+  const typedError = error as ApiErrorLike;
+  const responseError = typedError.response?.data?.error;
+  if (typeof responseError === "string" && responseError.trim()) {
+    return responseError;
+  }
+  const responseMessage = typedError.response?.data?.message;
+  if (typeof responseMessage === "string" && responseMessage.trim()) {
+    return responseMessage;
+  }
+  if (typeof typedError.message === "string" && typedError.message.trim()) {
+    return typedError.message;
+  }
+  return null;
 }
 
 
@@ -424,15 +504,18 @@ function DonutChart({ slices, size = 84, thickness = 14 }: { slices: DonutSlice[
     );
   }
 
-  let acc = 0;
-  const segments = slices
+  const { segments } = slices
     .filter((s) => s.value > 0)
-    .map((s) => {
-      const start = (acc / total) * 100;
-      acc += s.value;
-      const end = (acc / total) * 100;
-      return `${s.color} ${start}% ${end}%`;
-    });
+    .reduce(
+      (state, s) => {
+        const start = (state.acc / total) * 100;
+        const nextAcc = state.acc + s.value;
+        const end = (nextAcc / total) * 100;
+        state.segments.push(`${s.color} ${start}% ${end}%`);
+        return { acc: nextAcc, segments: state.segments };
+      },
+      { acc: 0, segments: [] as string[] }
+    );
 
   const background = `conic-gradient(${segments.join(", ")})`;
 
@@ -463,8 +546,7 @@ export default function StudentDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-
-  const backTo = (location.state as any)?.from;
+  const backTo = (location.state as RouterLocationState | null)?.from;
   const handleBack = () => {
     if (typeof backTo === "string" && backTo.startsWith("/")) navigate(backTo);
     else if (location.key !== "default") navigate(-1);
@@ -493,33 +575,42 @@ export default function StudentDetailPage() {
   // Student editing
   const [editingStudent, setEditingStudent] = useState(false);
   const [savingStudent, setSavingStudent] = useState(false);
+  const [deleteStudentInfoOpen, setDeleteStudentInfoOpen] = useState(false);
+  const [deleteStudentConfirmOpen, setDeleteStudentConfirmOpen] = useState(false);
+  const [deletingStudent, setDeletingStudent] = useState(false);
+  const [recordDeleteConfirm, setRecordDeleteConfirm] = useState<RecordDeleteTarget | null>(null);
+  const [recordDeleteSubmitting, setRecordDeleteSubmitting] = useState(false);
   const [districtOptions, setDistrictOptions] = useState<LocationDistrict[]>([]);
   const [municipalityOptions, setMunicipalityOptions] = useState<LocationMunicipality[]>([]);
-  const [studentDraft, setStudentDraft] = useState({
+  const [studentDraft, setStudentDraft] = useState<StudentDraft>({
     first_names: "",
     last_names: "",
     dni_nie: "",
     social_security_number: "",
     birth_date: "",
-    sex: "unknown" as "mujer" | "hombre" | "other" | "unknown",
+    sex: "unknown",
     district_code: "",
     municipality_code: "",
     phone: "",
     email: "",
-    tic: "NO" as (typeof TIC_OPTIONS)[number],
-    status_laboral: "" as (typeof STATUS_LABORAL_OPTIONS)[number],
+    tic: "NO",
+    status_laboral: "",
     notes: "",
   });
 
   // Dialogs
   const [coursesOpen, setCoursesOpen] = useState(false);
+  const [enrolledCourseFormOpen, setEnrolledCourseFormOpen] = useState(false);
   const [recommendedOpen, setRecommendedOpen] = useState(false);
   const [interviewsOpen, setInterviewsOpen] = useState(false);
+  const [interviewFormOpen, setInterviewFormOpen] = useState(false);
   const [invitationsOpen, setInvitationsOpen] = useState(false);
+  const [invitationFormOpen, setInvitationFormOpen] = useState(false);
   const [practicesOpen, setPracticesOpen] = useState(false);
   const [practiceFormOpen, setPracticeFormOpen] = useState(false);
   const [practiceFormMode, setPracticeFormMode] = useState<PracticeFormMode | null>(null);
   const [contractsOpen, setContractsOpen] = useState(false);
+  const [contractFormOpen, setContractFormOpen] = useState(false);
 
   // Enrolled itinerary form (update)
   const [enrolledCourseForm, setEnrolledCourseForm] = useState<EnrolledCourseForm>(
@@ -1034,6 +1125,34 @@ export default function StudentDetailPage() {
 
   const itineraryCoursesSummary = useMemo(() => enrolledCourses.slice(0, 4), [enrolledCourses]);
   const totalCoursesCount = enrolledCourses.length;
+  const studentExpedientesText = useMemo(() => {
+    const uniqueExpedientes = Array.from(
+      new Set(
+        enrolledCourses
+          .map((course) => (course.expediente ?? "").trim())
+          .filter((expediente) => expediente.length > 0)
+      )
+    );
+    return uniqueExpedientes.length ? uniqueExpedientes.join(", ") : "-";
+  }, [enrolledCourses]);
+  const studentAssociatedData = useMemo(
+    () => [
+      { label: "Invitaciones", count: invitations.length },
+      { label: "Entrevistas", count: interviews.length },
+      { label: "Cursos realizados", count: enrolledCourses.length },
+      { label: "Prácticas no Laborales", count: practiceRows.length },
+      { label: "Contrataciones", count: contracts.length },
+    ],
+    [contracts.length, enrolledCourses.length, interviews.length, invitations.length, practiceRows.length]
+  );
+  const studentHasAssociatedData = useMemo(
+    () => studentAssociatedData.some((item) => item.count > 0),
+    [studentAssociatedData]
+  );
+  const studentAssociatedDataWithCount = useMemo(
+    () => studentAssociatedData.filter((item) => item.count > 0),
+    [studentAssociatedData]
+  );
 
   const recommendedTop2 = useMemo(() => recommended.slice(0, 2), [recommended]);
 
@@ -1104,14 +1223,16 @@ export default function StudentDetailPage() {
     ]);
 
     const rec = Array.isArray(mRes.data) ? mRes.data : [];
-    const sectors = (Array.isArray(sectorsRes.data) ? sectorsRes.data : [])
-      .map((row: any) => ({
+    const sectorRows = (Array.isArray(sectorsRes.data) ? sectorsRes.data : []) as SectorCatalogApiRow[];
+    const sectors = sectorRows
+      .map((row) => ({
         id: Number(row?.id),
         sector_name: (row?.sector_name ?? row?.name ?? "").toString(),
       }))
       .filter((row) => Number.isFinite(row.id) && row.sector_name.trim().length > 0) as SectorCatalogItem[];
-    const contractCodes = (Array.isArray(codesRes.data) ? codesRes.data : [])
-      .map((row: any) => ({
+    const contractCodeRows = (Array.isArray(codesRes.data) ? codesRes.data : []) as ContractCodeCatalogApiRow[];
+    const contractCodes = contractCodeRows
+      .map((row) => ({
         code: Number(row?.code),
         contract_type: (row?.contract_type ?? row?.type ?? "").toString(),
         workday: (row?.workday ?? row?.jornada ?? "").toString(),
@@ -1132,7 +1253,7 @@ export default function StudentDetailPage() {
       contractSectorOptions: sectors.sort((a, b) => a.sector_name.localeCompare(b.sector_name, "es", { sensitivity: "base" })),
       contractCodeOptions: contractCodes.sort((a, b) => a.code - b.code),
       recommended: rec
-        .map((v) => ({ vacancy: v, score: Number((v as any).score) }))
+        .map((v) => ({ vacancy: v, score: Number(v.score) }))
         .filter((x) => Number.isFinite(x.score) && x.score >= 50),
     };
   }
@@ -1201,8 +1322,8 @@ export default function StudentDetailPage() {
       })
       .catch((err) => {
         if (cancel) return;
-        if (err?.response?.status === 404) setNotFound(true);
-        else setLoadError(err?.response?.data?.message || err?.message || "Error");
+        if (getErrorStatus(err) === 404) setNotFound(true);
+        else setLoadError(getErrorMessage(err) || "Error");
       })
       .finally(() => {
         if (!cancel) setLoading(false);
@@ -1221,7 +1342,7 @@ export default function StudentDetailPage() {
       dni_nie: student.dni_nie || "",
       social_security_number: student.social_security_number || "",
       birth_date: fmtDate(student.birth_date),
-      sex: (student.sex || "unknown") as any,
+      sex: normalizeStudentSex(student.sex),
       district_code: student.district_code != null ? String(student.district_code) : "",
       municipality_code: student.municipality_code != null ? String(student.municipality_code) : "",
       phone: student.phone || "",
@@ -1284,8 +1405,8 @@ export default function StudentDetailPage() {
       });
 
       setEditingStudent(false);
-    } catch (e: any) {
-      setActionError(e?.response?.data?.error || e?.message || "Error al guardar");
+    } catch (e: unknown) {
+      setActionError(getErrorMessage(e) || "Error al guardar");
     } finally {
       setSavingStudent(false);
     }
@@ -1324,24 +1445,18 @@ export default function StudentDetailPage() {
           .toUpperCase() as EnrolledCourseForm["leave_notification"]
       ) || "",
     });
+    setEnrolledCourseFormOpen(true);
   }
   function startCreateEnrolledCourse() {
-    const firstItinerary = courseItineraryOptions[0];
-    const base = { ...EMPTY_ENROLLED_COURSE_FORM };
-    const initialized = firstItinerary
-      ? applyItineraryToEnrolledForm(firstItinerary.course_code, base)
-      : base;
-    setEnrolledCourseForm({
-      ...initialized,
-      effective_start_date:
-        initialized.effective_start_date || initialized.formation_start_date,
-    });
+    setEnrolledCourseForm({ ...EMPTY_ENROLLED_COURSE_FORM });
     setEnrolledCourseFormMode("create");
+    setEnrolledCourseFormOpen(true);
   }
 
   function resetEnrolledCourseForm() {
+    setEnrolledCourseFormOpen(false);
     setEnrolledCourseFormMode(null);
-    setEnrolledCourseForm(EMPTY_ENROLLED_COURSE_FORM);
+    setEnrolledCourseForm({ ...EMPTY_ENROLLED_COURSE_FORM });
   }
 
   async function saveEnrolledCourse() {
@@ -1376,8 +1491,30 @@ export default function StudentDetailPage() {
       }
       await refreshEnrolledCourses();
       resetEnrolledCourseForm();
-    } catch (e: any) {
-      setActionError(e?.response?.data?.error || e?.message || "Error al guardar itinerario");
+    } catch (e: unknown) {
+      setActionError(getErrorMessage(e) || "Error al guardar itinerario");
+    } finally {
+      setEnrolledCourseSaving(false);
+    }
+  }
+
+  async function deleteEnrolledCourse(expediente: string): Promise<boolean> {
+    if (!sid) return false;
+    try {
+      setActionError(null);
+      setEnrolledCourseSaving(true);
+      await api.delete(`/students/${sid}/enrolled-courses/${encodeURIComponent(expediente)}`);
+      await refreshEnrolledCourses();
+      if (
+        enrolledCourseFormOpen &&
+        (enrolledCourseForm.original_expediente || enrolledCourseForm.expediente) === expediente
+      ) {
+        resetEnrolledCourseForm();
+      }
+      return true;
+    } catch (e: unknown) {
+      setActionError(getErrorMessage(e) || "Error al eliminar itinerario");
+      return false;
     } finally {
       setEnrolledCourseSaving(false);
     }
@@ -1418,6 +1555,51 @@ export default function StudentDetailPage() {
     setContracts(Array.isArray(data) ? data : []);
   }
 
+  function openCoursesDialog() {
+    resetEnrolledCourseForm();
+    setCoursesOpen(true);
+  }
+
+  function closeCoursesDialog() {
+    setCoursesOpen(false);
+    resetEnrolledCourseForm();
+  }
+
+  function openInterviewsDialog() {
+    setInterviewsOpen(true);
+  }
+
+  function closeInterviewsDialog() {
+    setInterviewsOpen(false);
+    closeInterviewForm();
+  }
+
+  function openCreateInterviewForm() {
+    setInterviewForm({
+      interview_date: fmtDate(new Date()),
+      status: "sent",
+      place: "",
+      notes: "",
+    });
+    setInterviewFormOpen(true);
+  }
+
+  function startEditInterview(i: Interview) {
+    setInterviewForm({
+      id: i.id,
+      interview_date: fmtDate(i.interview_date),
+      status: (i.status ?? "sent") as "sent" | "attended" | "no_show",
+      place: i.place ?? "",
+      notes: i.notes ?? "",
+    });
+    setInterviewFormOpen(true);
+  }
+
+  function closeInterviewForm() {
+    setInterviewFormOpen(false);
+    setInterviewForm({ interview_date: "", status: "sent", place: "", notes: "" });
+  }
+
   async function saveInterview() {
     const n = Number(sid);
     if (!Number.isFinite(n) || !interviewForm.interview_date) return;
@@ -1444,39 +1626,36 @@ export default function StudentDetailPage() {
       }
 
       await refreshInterviews();
-      setInterviewForm({ interview_date: "", status: "sent", place: "", notes: "" });
-    } catch (e: any) {
-      setActionError(e?.response?.data?.error || e?.message || "Error al guardar entrevista");
+      closeInterviewForm();
+    } catch (e: unknown) {
+      setActionError(getErrorMessage(e) || "Error al guardar entrevista");
     } finally {
       setInterviewSaving(false);
     }
   }
 
-  async function deleteInterview(interviewId: number) {
+  async function deleteInterview(interviewId: number): Promise<boolean> {
     try {
       setActionError(null);
       await api.delete(`/interviews/${interviewId}`);
       await refreshInterviews();
       if (interviewForm.id === interviewId) {
-        setInterviewForm({ interview_date: "", status: "sent", place: "", notes: "" });
+        closeInterviewForm();
       }
-    } catch (e: any) {
-      setActionError(e?.response?.data?.error || e?.message || "Error al eliminar entrevista");
+      return true;
+    } catch (e: unknown) {
+      setActionError(getErrorMessage(e) || "Error al eliminar entrevista");
+      return false;
     }
   }
 
   function openInvitationsDialog() {
     setInvitationsOpen(true);
-    setInvitationFormMode(null);
-    setInvitationForm({ ...EMPTY_INVITATION_FORM });
-    setInvitationNotify({ email: false, whatsapp: false });
   }
 
   function closeInvitationsDialog() {
     setInvitationsOpen(false);
-    setInvitationFormMode(null);
-    setInvitationForm({ ...EMPTY_INVITATION_FORM });
-    setInvitationNotify({ email: false, whatsapp: false });
+    cancelInvitationForm();
   }
 
   function startCreateInvitation() {
@@ -1488,6 +1667,7 @@ export default function StudentDetailPage() {
       responded_at: "",
     });
     setInvitationNotify({ email: false, whatsapp: false });
+    setInvitationFormOpen(true);
   }
 
   function startEditInvitation(inv: InvitationRow) {
@@ -1500,9 +1680,11 @@ export default function StudentDetailPage() {
       responded_at: inv.responded_at ? fmtDate(inv.responded_at) : "",
     });
     setInvitationNotify({ email: false, whatsapp: false });
+    setInvitationFormOpen(true);
   }
 
   function cancelInvitationForm() {
+    setInvitationFormOpen(false);
     setInvitationFormMode(null);
     setInvitationForm({ ...EMPTY_INVITATION_FORM });
     setInvitationNotify({ email: false, whatsapp: false });
@@ -1550,14 +1732,14 @@ export default function StudentDetailPage() {
         const channels = [notify.email ? "Email" : null, notify.whatsapp ? "WhatsApp" : null].filter(Boolean).join(" + ");
         setActionInfo(`Invitación guardada. Notificar por ${channels} (pendiente de integración).`);
       }
-    } catch (e: any) {
-      setActionError(e?.response?.data?.error || e?.message || "Error al guardar invitación");
+    } catch (e: unknown) {
+      setActionError(getErrorMessage(e) || "Error al guardar invitación");
     } finally {
       setInvitationSaving(false);
     }
   }
 
-  async function deleteInvitation(invitationId: number) {
+  async function deleteInvitation(invitationId: number): Promise<boolean> {
     try {
       setActionError(null);
       await api.delete(`/invitations/${invitationId}`);
@@ -1565,8 +1747,10 @@ export default function StudentDetailPage() {
       if (invitationForm.id === invitationId) {
         cancelInvitationForm();
       }
-    } catch (e: any) {
-      setActionError(e?.response?.data?.error || e?.message || "Error al eliminar invitación");
+      return true;
+    } catch (e: unknown) {
+      setActionError(getErrorMessage(e) || "Error al eliminar invitación");
+      return false;
     }
   }
 
@@ -1603,10 +1787,9 @@ export default function StudentDetailPage() {
     setPracticeFormMode("create");
     setPracticeFormOpen(true);
   }
-
-  function openViewPracticeForm(p: PracticeRow) {
+  function openEditPracticeForm(p: PracticeRow) {
     startEditPractice(p);
-    setPracticeFormMode("view");
+    setPracticeFormMode("edit");
     setPracticeFormOpen(true);
   }
 
@@ -1714,14 +1897,14 @@ export default function StudentDetailPage() {
 
       await refreshPractices();
       closePracticeForm();
-    } catch (e: any) {
-      setActionError(e?.response?.data?.error || e?.message || "Error al guardar práctica");
+    } catch (e: unknown) {
+      setActionError(getErrorMessage(e) || "Error al guardar práctica");
     } finally {
       setPracticeSaving(false);
     }
   }
 
-  async function deletePractice(practiceId: number) {
+  async function deletePractice(practiceId: number): Promise<boolean> {
     try {
       setActionError(null);
       await api.delete(`/practices/${practiceId}`);
@@ -1729,26 +1912,26 @@ export default function StudentDetailPage() {
       if (practiceForm.id === practiceId) {
         closePracticeForm();
       }
-    } catch (e: any) {
-      setActionError(e?.response?.data?.error || e?.message || "Error al eliminar práctica");
+      return true;
+    } catch (e: unknown) {
+      setActionError(getErrorMessage(e) || "Error al eliminar práctica");
+      return false;
     }
   }
 
   function openContractsDialog() {
     setContractsOpen(true);
-    setContractFormMode(null);
-    setContractForm({ ...EMPTY_CONTRACT_FORM });
   }
 
   function closeContractsDialog() {
     setContractsOpen(false);
-    setContractFormMode(null);
-    setContractForm({ ...EMPTY_CONTRACT_FORM });
+    cancelContractForm();
   }
 
   function startCreateContract() {
     setContractFormMode("create");
     setContractForm({ ...EMPTY_CONTRACT_FORM });
+    setContractFormOpen(true);
   }
 
   function startEditContract(c: HiringContractRow) {
@@ -1779,9 +1962,11 @@ export default function StudentDetailPage() {
       start_date: fmtDate(c.start_date),
       end_date: fmtDate(c.end_date),
     });
+    setContractFormOpen(true);
   }
 
   function cancelContractForm() {
+    setContractFormOpen(false);
     setContractFormMode(null);
     setContractForm({ ...EMPTY_CONTRACT_FORM });
   }
@@ -1833,14 +2018,14 @@ export default function StudentDetailPage() {
 
       await refreshContracts();
       cancelContractForm();
-    } catch (e: any) {
-      setActionError(e?.response?.data?.error || e?.message || "Error al guardar contratación");
+    } catch (e: unknown) {
+      setActionError(getErrorMessage(e) || "Error al guardar contratación");
     } finally {
       setContractSaving(false);
     }
   }
 
-  async function deleteContract(contractId: number) {
+  async function deleteContract(contractId: number): Promise<boolean> {
     try {
       setActionError(null);
       await api.delete(`/hiring-contracts/${contractId}`);
@@ -1848,8 +2033,85 @@ export default function StudentDetailPage() {
       if (contractForm.id === contractId) {
         cancelContractForm();
       }
-    } catch (e: any) {
-      setActionError(e?.response?.data?.error || e?.message || "Error al eliminar contrato");
+      return true;
+    } catch (e: unknown) {
+      setActionError(getErrorMessage(e) || "Error al eliminar contrato");
+      return false;
+    }
+  }
+
+  function openDeleteStudentInfoDialog() {
+    setActionError(null);
+    setDeleteStudentInfoOpen(true);
+  }
+
+  function closeDeleteStudentDialogs() {
+    if (deletingStudent) return;
+    setDeleteStudentInfoOpen(false);
+    setDeleteStudentConfirmOpen(false);
+  }
+
+  function continueDeleteStudentToConfirmation() {
+    if (studentHasAssociatedData) return;
+    setDeleteStudentInfoOpen(false);
+    setDeleteStudentConfirmOpen(true);
+  }
+
+  async function confirmDeleteStudent() {
+    if (!student || studentHasAssociatedData) return;
+    try {
+      setActionError(null);
+      setDeletingStudent(true);
+      await api.delete(`/students/${student.id}`);
+      setDeleteStudentConfirmOpen(false);
+      setDeleteStudentInfoOpen(false);
+      navigate("/students");
+    } catch (e: unknown) {
+      setActionError(getErrorMessage(e) || "Error al eliminar alumno");
+    } finally {
+      setDeletingStudent(false);
+    }
+  }
+
+  function requestRecordDelete(target: RecordDeleteTarget) {
+    setActionError(null);
+    setRecordDeleteConfirm(target);
+  }
+
+  function closeRecordDeleteConfirm() {
+    if (recordDeleteSubmitting) return;
+    setRecordDeleteConfirm(null);
+  }
+
+  async function confirmRecordDelete() {
+    if (!recordDeleteConfirm) return;
+    const target = recordDeleteConfirm;
+    let deleted = false;
+    try {
+      setActionError(null);
+      setRecordDeleteSubmitting(true);
+      switch (target.kind) {
+        case "interview":
+          deleted = await deleteInterview(target.id);
+          break;
+        case "invitation":
+          deleted = await deleteInvitation(target.id);
+          break;
+        case "enrolled_course":
+          deleted = await deleteEnrolledCourse(target.expediente);
+          break;
+        case "practice":
+          deleted = await deletePractice(target.id);
+          break;
+        case "contract":
+          deleted = await deleteContract(target.id);
+          break;
+      }
+      if (deleted) {
+        setRecordDeleteConfirm(null);
+      }
+    } finally {
+      setRecordDeleteSubmitting(false);
     }
   }
 
@@ -1883,10 +2145,12 @@ export default function StudentDetailPage() {
         <Stack>
           <Typography variant="h5">{`${student.first_names} ${student.last_names}`.trim()}</Typography>
           <Typography variant="body2" color="text.secondary">
-            DNI / NIE / Pasaporte: {student.dni_nie || "-"}
+            Expedientes: {studentExpedientesText}
           </Typography>
         </Stack>
-        <Button onClick={handleBack}>Volver</Button>
+        <Stack direction="row" spacing={1}>
+          <Button onClick={handleBack}>Volver</Button>
+        </Stack>
       </Stack>
 
       {actionError && (
@@ -1901,6 +2165,85 @@ export default function StudentDetailPage() {
         </Alert>
       )}
 
+      <Dialog open={deleteStudentInfoOpen} onClose={closeDeleteStudentDialogs} fullWidth maxWidth="sm">
+        <DialogTitle>Eliminar alumno</DialogTitle>
+        <DialogContent dividers>
+          {studentHasAssociatedData ? (
+            <>
+              <Alert severity="warning" sx={{ mb: 2 }}>
+                Este alumno tiene datos asociados. Debes eliminar manualmente esos registros antes de poder eliminar al alumno.
+              </Alert>
+              <Stack component="ul" spacing={0.5} sx={{ m: 0, pl: 2 }}>
+                {studentAssociatedDataWithCount.map((item) => (
+                  <Typography key={item.label} component="li" variant="body2">
+                    {`${item.label}: ${item.count}`}
+                  </Typography>
+                ))}
+              </Stack>
+            </>
+          ) : (
+            <Alert severity="info">
+              Este alumno no tiene datos asociados en invitaciones, entrevistas, cursos realizados, prácticas no laborales ni contrataciones.
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button variant="outlined" onClick={closeDeleteStudentDialogs} disabled={deletingStudent}>
+            {studentHasAssociatedData ? "Cerrar" : "Cancelar"}
+          </Button>
+          {!studentHasAssociatedData ? (
+            <Button
+              color="error"
+              variant="contained"
+              onClick={continueDeleteStudentToConfirmation}
+              disabled={deletingStudent}
+            >
+              Continuar
+            </Button>
+          ) : null}
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={deleteStudentConfirmOpen} onClose={closeDeleteStudentDialogs} fullWidth maxWidth="sm">
+        <DialogTitle>Confirmar eliminación</DialogTitle>
+        <DialogContent dividers>
+          <Typography variant="body2">
+            ¿Seguro que deseas eliminar al alumno {`${student.first_names} ${student.last_names}`.trim()}? Esta acción no se puede deshacer.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button variant="outlined" onClick={closeDeleteStudentDialogs} disabled={deletingStudent}>
+            Cancelar
+          </Button>
+          <Button color="error" variant="contained" onClick={confirmDeleteStudent} disabled={deletingStudent}>
+            {deletingStudent ? "Eliminando..." : "Eliminar definitivamente"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog open={Boolean(recordDeleteConfirm)} onClose={closeRecordDeleteConfirm} fullWidth maxWidth="sm">
+        <DialogTitle>Confirmar eliminación</DialogTitle>
+        <DialogContent dividers>
+          <Typography variant="body2">
+            {recordDeleteConfirm
+              ? `¿Seguro que deseas eliminar ${recordDeleteConfirm.label}? Esta acción no se puede deshacer.`
+              : ""}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button variant="outlined" onClick={closeRecordDeleteConfirm} disabled={recordDeleteSubmitting}>
+            Cancelar
+          </Button>
+          <Button
+            color="error"
+            variant="contained"
+            onClick={confirmRecordDelete}
+            disabled={recordDeleteSubmitting}
+          >
+            {recordDeleteSubmitting ? "Eliminando..." : "Eliminar"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       <Grid container spacing={2}>
         <Grid size={{ xs: 12 }}>
           <Stack spacing={2}>
@@ -1914,9 +2257,20 @@ export default function StudentDetailPage() {
                       Datos del alumno
                     </Typography>
                     {!editingStudent ? (
-                      <Button size="small" variant="outlined" onClick={() => setEditingStudent(true)}>
-                        Editar
-                      </Button>
+                      <Stack direction="row" spacing={1}>
+                        <Button
+                          size="small"
+                          color="error"
+                          variant="outlined"
+                          onClick={openDeleteStudentInfoDialog}
+                          disabled={deletingStudent}
+                        >
+                          Eliminar alumno
+                        </Button>
+                        <Button size="small" variant="outlined" onClick={() => setEditingStudent(true)}>
+                          Editar
+                        </Button>
+                      </Stack>
                     ) : (
                       <Stack direction="row" spacing={1}>
                         <Button size="small" variant="contained" onClick={saveStudent} disabled={savingStudent}>
@@ -1932,7 +2286,7 @@ export default function StudentDetailPage() {
                               dni_nie: student.dni_nie || "",
                               social_security_number: student.social_security_number || "",
                               birth_date: fmtDate(student.birth_date),
-                              sex: (student.sex || "unknown") as any,
+                              sex: normalizeStudentSex(student.sex),
                               district_code: student.district_code != null ? String(student.district_code) : "",
                               municipality_code: student.municipality_code != null ? String(student.municipality_code) : "",
                               phone: student.phone || "",
@@ -2047,7 +2401,7 @@ export default function StudentDetailPage() {
                           onChange={(e) =>
                             setStudentDraft((d) => ({
                               ...d,
-                              sex: e.target.value as any,
+                              sex: e.target.value as StudentSex,
                             }))
                           }
                         >
@@ -2155,7 +2509,7 @@ export default function StudentDetailPage() {
                           onChange={(e) =>
                             setStudentDraft((d) => ({
                               ...d,
-                              tic: e.target.value as (typeof TIC_OPTIONS)[number],
+                              tic: e.target.value as TicOption,
                             }))
                           }
                         >
@@ -2180,7 +2534,7 @@ export default function StudentDetailPage() {
                           onChange={(e) =>
                             setStudentDraft((d) => ({
                               ...d,
-                              status_laboral: e.target.value as (typeof STATUS_LABORAL_OPTIONS)[number],
+                              status_laboral: e.target.value as StatusLaboralOption,
                             }))
                           }
                         >
@@ -2224,9 +2578,15 @@ export default function StudentDetailPage() {
                           <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
                             Invitaciones ({invitations.length})
                           </Typography>
-                          <Button size="small" variant="outlined" onClick={openInvitationsDialog}>
-                            Ver
-                          </Button>
+                          {invitations.length === 0 ? (
+                            <Button size="small" variant="outlined" onClick={startCreateInvitation}>
+                              Agregar
+                            </Button>
+                          ) : (
+                            <Button size="small" variant="outlined" onClick={openInvitationsDialog}>
+                              Ver detalles
+                            </Button>
+                          )}
                         </Stack>
                         <Divider sx={{ mb: 1.5 }} />
                         <Stack spacing={1.5}>
@@ -2271,9 +2631,15 @@ export default function StudentDetailPage() {
                           <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
                             Entrevistas ({interviews.length})
                           </Typography>
-                          <Button size="small" variant="outlined" onClick={() => setInterviewsOpen(true)}>
-                            Ver
-                          </Button>
+                          {interviews.length === 0 ? (
+                            <Button size="small" variant="outlined" onClick={openCreateInterviewForm}>
+                              Agregar
+                            </Button>
+                          ) : (
+                            <Button size="small" variant="outlined" onClick={openInterviewsDialog}>
+                              Ver detalles
+                            </Button>
+                          )}
                         </Stack>
                         <Divider sx={{ mb: 1.5 }} />
                         <Stack spacing={1.5}>
@@ -2373,9 +2739,9 @@ export default function StudentDetailPage() {
                     <Button
                       size="small"
                       variant="outlined"
-                      onClick={openPracticesDialog}
+                      onClick={practiceRows.length === 0 ? openCreatePracticeForm : openPracticesDialog}
                     >
-                      Ver
+                      {practiceRows.length === 0 ? "Agregar" : "Ver detalles"}
                     </Button>
                   </Stack>
                   <Divider sx={{ mb: 1.5 }} />
@@ -2407,8 +2773,12 @@ export default function StudentDetailPage() {
                     <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
                       Contrataciones ({contracts.length})
                     </Typography>
-                    <Button size="small" variant="outlined" onClick={openContractsDialog}>
-                      Ver
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={contracts.length === 0 ? startCreateContract : openContractsDialog}
+                    >
+                      {contracts.length === 0 ? "Agregar" : "Ver detalles"}
                     </Button>
                   </Stack>
                   <Divider sx={{ mb: 1.5 }} />
@@ -2446,8 +2816,12 @@ export default function StudentDetailPage() {
                 <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
                   Cursos realizados ({totalCoursesCount})
                 </Typography>
-                <Button size="small" variant="outlined" onClick={() => setCoursesOpen(true)}>
-                  Ver detalles
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={totalCoursesCount === 0 ? startCreateEnrolledCourse : openCoursesDialog}
+                >
+                  {totalCoursesCount === 0 ? "Agregar" : "Ver detalles"}
                 </Button>
               </Stack>
               <Divider sx={{ mb: 1.5 }} />
@@ -2539,293 +2913,319 @@ export default function StudentDetailPage() {
         </DialogActions>
       </Dialog>
 
-      {/* Cursos: listado completo + CRUD */}
-      <Dialog open={coursesOpen} onClose={() => setCoursesOpen(false)} fullWidth maxWidth="lg">
-        <DialogTitle>Cursos realizados</DialogTitle>
+      {/* Cursos: listado completo */}
+      <Dialog open={coursesOpen} onClose={closeCoursesDialog} fullWidth maxWidth="lg">
+        <DialogTitle>
+          <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
+            <Typography variant="h6">Cursos realizados ({enrolledCourses.length})</Typography>
+            <Button variant="outlined" onClick={startCreateEnrolledCourse}>
+              Agregar
+            </Button>
+          </Stack>
+        </DialogTitle>
         <DialogContent dividers>
-          <Stack spacing={2}>
-            <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
-              <Stack direction="row" justifyContent="space-between" alignItems="center">
-                <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                  Total: {enrolledCourses.length}
-                </Typography>
-                <Button variant="outlined" onClick={startCreateEnrolledCourse}>
-                  Nuevo itinerario
-                </Button>
-              </Stack>
-            </Paper>
-            <Paper variant="outlined" sx={{ borderRadius: 2, overflow: "hidden" }}>
-              <Box sx={{ overflowX: "auto" }}>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Itinerario</TableCell>
-                      <TableCell>Código curso</TableCell>
-                      <TableCell>Expediente</TableCell>
-                      <TableCell>Estado</TableCell>
-                      <TableCell>Fecha inicio formación</TableCell>
-                      <TableCell>Fecha efectiva de inicio</TableCell>
-                      <TableCell>Fecha fin formación</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {enrolledCourses.map((course) => (
-                      <TableRow
-                        key={course.expediente}
-                        hover
-                        selected={enrolledCourseForm.original_expediente === course.expediente}
-                        sx={{ cursor: "pointer" }}
-                        onClick={() => startEditEnrolledCourse(course)}
-                        tabIndex={0}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") startEditEnrolledCourse(course);
-                        }}
-                      >
-                        <TableCell>{course.itinerary_name || "-"}</TableCell>
-                        <TableCell>{course.course_code}</TableCell>
-                        <TableCell>{course.expediente}</TableCell>
-                        <TableCell>{courseStatusText(course.course_status)}</TableCell>
-                        <TableCell>{formatDateDMY(course.formation_start_date)}</TableCell>
-                        <TableCell>{formatDateDMY(course.effective_start_date ?? course.formation_start_date)}</TableCell>
-                        <TableCell>{formatDateDMY(course.formation_end_date)}</TableCell>
-                      </TableRow>
-                    ))}
-                    {enrolledCourses.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={7} align="center" sx={{ py: 3, color: "text.secondary" }}>
-                          Sin itinerarios matriculados
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </Box>
-            </Paper>
-            <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
-              <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                {enrolledCourseFormMode === "create"
-                  ? "Nuevo itinerario"
-                  : enrolledCourseFormMode === "edit"
-                    ? "Editar itinerario"
-                    : "Selecciona un itinerario para editar"}
-              </Typography>
-              {enrolledCourseFormMode ? (
-                <Grid container spacing={2}>
-                  <Grid size={{ xs: 12, md: 3 }}>
-                    <TextField
-                      select
-                      label="Código curso"
-                      size="small"
-                      fullWidth
-                      value={enrolledCourseForm.course_code}
-                      onChange={(e) =>
-                        setEnrolledCourseForm((f) =>
-                          applyItineraryToEnrolledForm(e.target.value, f)
-                        )
-                      }
-                    >
-                      {courseItineraryOptions.map((courseOption) => (
-                        <MenuItem key={courseOption.course_code} value={courseOption.course_code}>
-                          {courseOption.course_code}
-                        </MenuItem>
-                      ))}
-                    </TextField>
-                  </Grid>
-                  <Grid size={{ xs: 12, md: 6 }}>
-                    <TextField
-                      select
-                      label="Itinerario"
-                      size="small"
-                      fullWidth
-                      value={enrolledCourseForm.itinerary_name}
-                      disabled
-                    >
-                      {enrolledCourseForm.itinerary_name ? (
-                        <MenuItem value={enrolledCourseForm.itinerary_name}>
-                          {enrolledCourseForm.itinerary_name}
-                        </MenuItem>
-                      ) : (
-                        <MenuItem value="">
-                          <em>Seleccione código curso</em>
-                        </MenuItem>
-                      )}
-                    </TextField>
-                  </Grid>
-                  <Grid size={{ xs: 12, md: 3 }}>
-                    <TextField
-                      label="Expediente"
-                      size="small"
-                      fullWidth
-                      value={enrolledCourseForm.expediente}
-                      onChange={(e) =>
-                        setEnrolledCourseForm((f) => ({ ...f, expediente: e.target.value }))
-                      }
-                    />
-                  </Grid>
-                  <Grid size={{ xs: 12, md: 4 }}>
-                    <TextField
-                      label="Fecha inicio formación"
-                      size="small"
-                      fullWidth
-                      value={formatDateDMY(enrolledCourseForm.formation_start_date)}
-                      InputProps={{ readOnly: true }}
-                    />
-                  </Grid>
-                  <Grid size={{ xs: 12, md: 4 }}>
-                    <DateTextField
-                      label="Fecha efectiva de inicio"
-                      size="small"
-                      fullWidth
-                      value={enrolledCourseForm.effective_start_date}
-                      onChange={(nextIso) =>
-                        setEnrolledCourseForm((f) => ({ ...f, effective_start_date: nextIso }))
-                      }
-                      placeholder="dd/mm/aaaa"
-                    />
-                  </Grid>
-                  <Grid size={{ xs: 12, md: 4 }}>
-                    <TextField
-                      label="Fecha fin formación"
-                      size="small"
-                      fullWidth
-                      value={formatDateDMY(enrolledCourseForm.formation_end_date)}
-                      InputProps={{ readOnly: true }}
-                    />
-                  </Grid>
-                  <Grid size={{ xs: 12, md: 4 }}>
-                    <TextField
-                      label="Horario formación"
-                      size="small"
-                      fullWidth
-                      value={enrolledCourseForm.formation_schedule || "-"}
-                      InputProps={{ readOnly: true }}
-                    />
-                  </Grid>
-                  <Grid size={{ xs: 12, md: 6 }}>
-                    <TextField
-                      label="Empresa"
-                      size="small"
-                      fullWidth
-                      value={enrolledCourseForm.company || "-"}
-                      InputProps={{ readOnly: true }}
-                    />
-                  </Grid>
-                  <Grid size={{ xs: 12, md: 6 }}>
-                    <TextField
-                      label="Docente"
-                      size="small"
-                      fullWidth
-                      value={enrolledCourseForm.teacher || "-"}
-                      InputProps={{ readOnly: true }}
-                    />
-                  </Grid>
-                  <Grid size={{ xs: 12, md: 4 }}>
-                    <TextField
-                      label="Estado"
-                      select
-                      size="small"
-                      fullWidth
-                      value={enrolledCourseForm.course_status}
-                      onChange={(e) => {
-                        const nextStatus = e.target.value as EnrolledCourseForm["course_status"];
-                        setEnrolledCourseForm((f) => ({
-                          ...f,
-                          course_status: nextStatus,
-                          leave_date: nextStatus === "APTO" ? "" : f.leave_date,
-                          leave_reason: nextStatus === "APTO" ? "" : f.leave_reason,
-                          leave_notification: nextStatus === "APTO" ? "" : f.leave_notification,
-                        }));
+          <Paper variant="outlined" sx={{ borderRadius: 2, overflow: "hidden" }}>
+            <Box sx={{ overflowX: "auto" }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Itinerario</TableCell>
+                    <TableCell>Código curso</TableCell>
+                    <TableCell>Expediente</TableCell>
+                    <TableCell>Estado</TableCell>
+                    <TableCell>Fecha inicio formación</TableCell>
+                    <TableCell>Fecha efectiva de inicio</TableCell>
+                    <TableCell>Fecha fin formación</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {enrolledCourses.map((course) => (
+                    <TableRow
+                      key={course.expediente}
+                      hover
+                      sx={{ cursor: "pointer" }}
+                      onClick={() => startEditEnrolledCourse(course)}
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") startEditEnrolledCourse(course);
                       }}
                     >
-                      {COURSE_STATUS_OPTIONS.map((option) => (
-                        <MenuItem key={option} value={option}>
-                          {courseStatusText(option)}
-                        </MenuItem>
-                      ))}
-                    </TextField>
-                  </Grid>
-                  <Grid size={{ xs: 12, md: 4 }}>
-                    <DateTextField
-                      label="Fecha baja"
-                      size="small"
-                      fullWidth
-                      disabled={enrolledCourseForm.course_status === "APTO"}
-                      value={enrolledCourseForm.leave_date}
-                      onChange={(nextIso) => setEnrolledCourseForm((f) => ({ ...f, leave_date: nextIso }))}
-                      placeholder="dd/mm/aaaa"
-                    />
-                  </Grid>
-                  <Grid size={{ xs: 12, md: 4 }}>
-                    <TextField
-                      label="Motivo baja"
-                      select
-                      size="small"
-                      fullWidth
-                      disabled={enrolledCourseForm.course_status === "APTO"}
-                      value={enrolledCourseForm.leave_reason}
-                      onChange={(e) =>
-                        setEnrolledCourseForm((f) => ({
-                          ...f,
-                          leave_reason: e.target.value as EnrolledCourseForm["leave_reason"],
-                        }))
-                      }
-                    >
-                      {LEAVE_REASON_OPTIONS.map((option) => (
-                        <MenuItem key={option || "EMPTY"} value={option}>
-                          {option ? leaveReasonText(option) : "Sin motivo"}
-                        </MenuItem>
-                      ))}
-                    </TextField>
-                  </Grid>
-                  <Grid size={{ xs: 12, md: 4 }}>
-                    <TextField
-                      label="Baja notificada/firmada"
-                      select
-                      size="small"
-                      fullWidth
-                      disabled={enrolledCourseForm.course_status === "APTO"}
-                      value={enrolledCourseForm.leave_notification}
-                      onChange={(e) =>
-                        setEnrolledCourseForm((f) => ({
-                          ...f,
-                          leave_notification: e.target.value as EnrolledCourseForm["leave_notification"],
-                        }))
-                      }
-                    >
-                      {LEAVE_NOTIFICATION_OPTIONS.map((option) => (
-                        <MenuItem key={option || "EMPTY"} value={option}>
-                          {option ? leaveNotificationText(option) : "Sin notificación"}
-                        </MenuItem>
-                      ))}
-                    </TextField>
-                  </Grid>
-                  <Grid size={{ xs: 12 }}>
-                    <Stack direction="row" spacing={1} justifyContent="flex-end">
-                      <Button variant="outlined" onClick={resetEnrolledCourseForm} disabled={enrolledCourseSaving}>
-                        Cancelar
-                      </Button>
-                      <Button variant="contained" onClick={saveEnrolledCourse} disabled={enrolledCourseSaving}>
-                        Guardar
-                      </Button>
-                    </Stack>
-                  </Grid>
-                </Grid>
-              ) : (
-                <Typography color="text.secondary">
-                  Selecciona un itinerario en la tabla para editarlo o pulsa NUEVO ITINERARIO.
-                </Typography>
-              )}
-            </Paper>
-          </Stack>
+                      <TableCell>{course.itinerary_name || "-"}</TableCell>
+                      <TableCell>{course.course_code}</TableCell>
+                      <TableCell>{course.expediente}</TableCell>
+                      <TableCell>{courseStatusText(course.course_status)}</TableCell>
+                      <TableCell>{formatDateDMY(course.formation_start_date)}</TableCell>
+                      <TableCell>{formatDateDMY(course.effective_start_date ?? course.formation_start_date)}</TableCell>
+                      <TableCell>{formatDateDMY(course.formation_end_date)}</TableCell>
+                    </TableRow>
+                  ))}
+                  {enrolledCourses.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={7} align="center" sx={{ py: 3, color: "text.secondary" }}>
+                        Sin itinerarios matriculados
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </Box>
+          </Paper>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setCoursesOpen(false)}>Cerrar</Button>
+          <Button onClick={closeCoursesDialog}>Cerrar</Button>
         </DialogActions>
       </Dialog>
 
-      {/* Entrevistas: listado completo + CRUD */}
-      <Dialog open={interviewsOpen} onClose={() => setInterviewsOpen(false)} fullWidth maxWidth="md">
-        <DialogTitle>Entrevistas</DialogTitle>
+      {/* Cursos: formulario en popup independiente */}
+      <Dialog open={enrolledCourseFormOpen} onClose={resetEnrolledCourseForm} fullWidth maxWidth="lg">
+        <DialogTitle>
+          {enrolledCourseFormMode === "create"
+            ? "Nuevo itinerario"
+            : enrolledCourseFormMode === "edit"
+              ? "Editar itinerario"
+              : "Formulario de itinerario"}
+        </DialogTitle>
+        <DialogContent dividers>
+          {enrolledCourseFormMode ? (
+            <Grid container spacing={2}>
+              <Grid size={{ xs: 12, md: 3 }}>
+                <TextField
+                  select
+                  label="Código curso"
+                  size="small"
+                  fullWidth
+                  value={enrolledCourseForm.course_code}
+                  onChange={(e) =>
+                    setEnrolledCourseForm((f) =>
+                      applyItineraryToEnrolledForm(e.target.value, f)
+                    )
+                  }
+                >
+                  <MenuItem value="">
+                    <em>Seleccione código curso</em>
+                  </MenuItem>
+                  {courseItineraryOptions.map((courseOption) => (
+                    <MenuItem key={courseOption.course_code} value={courseOption.course_code}>
+                      {courseOption.course_code}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <TextField
+                  select
+                  label="Itinerario"
+                  size="small"
+                  fullWidth
+                  value={enrolledCourseForm.itinerary_name}
+                  disabled
+                >
+                  {enrolledCourseForm.itinerary_name ? (
+                    <MenuItem value={enrolledCourseForm.itinerary_name}>
+                      {enrolledCourseForm.itinerary_name}
+                    </MenuItem>
+                  ) : (
+                    <MenuItem value="">
+                      <em>Seleccione código curso</em>
+                    </MenuItem>
+                  )}
+                </TextField>
+              </Grid>
+              <Grid size={{ xs: 12, md: 3 }}>
+                <TextField
+                  label="Expediente"
+                  size="small"
+                  fullWidth
+                  value={enrolledCourseForm.expediente}
+                  onChange={(e) =>
+                    setEnrolledCourseForm((f) => ({ ...f, expediente: e.target.value }))
+                  }
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 4 }}>
+                <TextField
+                  label="Fecha inicio formación"
+                  size="small"
+                  fullWidth
+                  value={formatDateDMY(enrolledCourseForm.formation_start_date)}
+                  InputProps={{ readOnly: true }}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 4 }}>
+                <DateTextField
+                  label="Fecha efectiva de inicio"
+                  size="small"
+                  fullWidth
+                  value={enrolledCourseForm.effective_start_date}
+                  onChange={(nextIso) =>
+                    setEnrolledCourseForm((f) => ({ ...f, effective_start_date: nextIso }))
+                  }
+                  placeholder="dd/mm/aaaa"
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 4 }}>
+                <TextField
+                  label="Fecha fin formación"
+                  size="small"
+                  fullWidth
+                  value={formatDateDMY(enrolledCourseForm.formation_end_date)}
+                  InputProps={{ readOnly: true }}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 4 }}>
+                <TextField
+                  label="Horario formación"
+                  size="small"
+                  fullWidth
+                  value={enrolledCourseForm.formation_schedule || "-"}
+                  InputProps={{ readOnly: true }}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <TextField
+                  label="Empresa"
+                  size="small"
+                  fullWidth
+                  value={enrolledCourseForm.company || "-"}
+                  InputProps={{ readOnly: true }}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <TextField
+                  label="Docente"
+                  size="small"
+                  fullWidth
+                  value={enrolledCourseForm.teacher || "-"}
+                  InputProps={{ readOnly: true }}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 4 }}>
+                <TextField
+                  label="Estado"
+                  select
+                  size="small"
+                  fullWidth
+                  value={enrolledCourseForm.course_status}
+                  onChange={(e) => {
+                    const nextStatus = e.target.value as EnrolledCourseForm["course_status"];
+                    setEnrolledCourseForm((f) => ({
+                      ...f,
+                      course_status: nextStatus,
+                      leave_date: nextStatus === "APTO" ? "" : f.leave_date,
+                      leave_reason: nextStatus === "APTO" ? "" : f.leave_reason,
+                      leave_notification: nextStatus === "APTO" ? "" : f.leave_notification,
+                    }));
+                  }}
+                >
+                  {COURSE_STATUS_OPTIONS.map((option) => (
+                    <MenuItem key={option} value={option}>
+                      {courseStatusText(option)}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              </Grid>
+              <Grid size={{ xs: 12, md: 4 }}>
+                <DateTextField
+                  label="Fecha baja"
+                  size="small"
+                  fullWidth
+                  disabled={enrolledCourseForm.course_status === "APTO"}
+                  value={enrolledCourseForm.leave_date}
+                  onChange={(nextIso) => setEnrolledCourseForm((f) => ({ ...f, leave_date: nextIso }))}
+                  placeholder="dd/mm/aaaa"
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 4 }}>
+                <TextField
+                  label="Motivo baja"
+                  select
+                  size="small"
+                  fullWidth
+                  disabled={enrolledCourseForm.course_status === "APTO"}
+                  value={enrolledCourseForm.leave_reason}
+                  onChange={(e) =>
+                    setEnrolledCourseForm((f) => ({
+                      ...f,
+                      leave_reason: e.target.value as EnrolledCourseForm["leave_reason"],
+                    }))
+                  }
+                >
+                  {LEAVE_REASON_OPTIONS.map((option) => (
+                    <MenuItem key={option || "EMPTY"} value={option}>
+                      {option ? leaveReasonText(option) : "Sin motivo"}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              </Grid>
+              <Grid size={{ xs: 12, md: 4 }}>
+                <TextField
+                  label="Baja notificada/firmada"
+                  select
+                  size="small"
+                  fullWidth
+                  disabled={enrolledCourseForm.course_status === "APTO"}
+                  value={enrolledCourseForm.leave_notification}
+                  onChange={(e) =>
+                    setEnrolledCourseForm((f) => ({
+                      ...f,
+                      leave_notification: e.target.value as EnrolledCourseForm["leave_notification"],
+                    }))
+                  }
+                >
+                  {LEAVE_NOTIFICATION_OPTIONS.map((option) => (
+                    <MenuItem key={option || "EMPTY"} value={option}>
+                      {option ? leaveNotificationText(option) : "Sin notificación"}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              </Grid>
+            </Grid>
+          ) : (
+            <Typography color="text.secondary">Selecciona una acción para continuar.</Typography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button variant="outlined" onClick={resetEnrolledCourseForm} disabled={enrolledCourseSaving}>
+            Cancelar
+          </Button>
+          {enrolledCourseFormMode === "edit" ? (
+            <Button
+              variant="outlined"
+              color="error"
+              disabled={enrolledCourseSaving}
+              onClick={() =>
+                requestRecordDelete({
+                  kind: "enrolled_course",
+                  expediente: enrolledCourseForm.original_expediente || enrolledCourseForm.expediente,
+                  label: enrolledCourseForm.expediente
+                    ? `el curso realizado del expediente ${enrolledCourseForm.expediente}`
+                    : "el curso realizado seleccionado",
+                })
+              }
+            >
+              Eliminar
+            </Button>
+          ) : null}
+          <Button
+            variant="contained"
+            onClick={saveEnrolledCourse}
+            disabled={enrolledCourseSaving || !enrolledCourseFormMode}
+          >
+            Guardar
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Entrevistas: listado completo */}
+      <Dialog open={interviewsOpen} onClose={closeInterviewsDialog} fullWidth maxWidth="md">
+        <DialogTitle>
+          <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
+            <Typography variant="h6">Entrevistas ({interviews.length})</Typography>
+            <Button variant="outlined" onClick={openCreateInterviewForm}>
+              Agregar
+            </Button>
+          </Stack>
+        </DialogTitle>
         <DialogContent dividers>
           <Stack spacing={2}>
             <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
@@ -2845,89 +3245,6 @@ export default function StudentDetailPage() {
               </Stack>
             </Paper>
 
-            <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
-              <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                {interviewForm.id ? "Editar entrevista" : "Nueva entrevista"}
-              </Typography>
-              <Grid container spacing={2}>
-                <Grid size={{ xs: 12, md: 4 }}>
-                  <DateTextField
-                    label="Fecha"
-                    size="small"
-                    fullWidth
-                    value={interviewForm.interview_date}
-                    onChange={(nextIso) => setInterviewForm((f) => ({ ...f, interview_date: nextIso }))}
-                    placeholder="dd/mm/aaaa"
-                  />
-                </Grid>
-                <Grid size={{ xs: 12, md: 6 }}>
-                  <TextField
-                    label="Centro de prácticas"
-                    size="small"
-                    fullWidth
-                    value={practiceForm.workplace}
-                    onChange={(e) => setPracticeForm((f) => ({ ...f, workplace: e.target.value }))}
-                  />
-                </Grid>
-
-                <Grid size={{ xs: 12, md: 4 }}>
-                  <TextField
-                    label="Estado"
-                    select
-                    size="small"
-                    fullWidth
-                    value={interviewForm.status}
-                    onChange={(e) => setInterviewForm((f) => ({ ...f, status: e.target.value as any }))}
-                  >
-                    <MenuItem value="sent">Enviada</MenuItem>
-                    <MenuItem value="attended">Asistida</MenuItem>
-                    <MenuItem value="no_show">No asistió</MenuItem>
-                  </TextField>
-                </Grid>
-
-                <Grid size={{ xs: 12, md: 4 }}>
-                  <TextField
-                    label="Lugar"
-                    size="small"
-                    fullWidth
-                    value={interviewForm.place}
-                    onChange={(e) => setInterviewForm((f) => ({ ...f, place: e.target.value }))}
-                  />
-                </Grid>
-
-                <Grid size={{ xs: 12 }}>
-                  <TextField
-                    label="Notas"
-                    size="small"
-                    fullWidth
-                    multiline
-                    minRows={2}
-                    value={interviewForm.notes}
-                    onChange={(e) => setInterviewForm((f) => ({ ...f, notes: e.target.value }))}
-                  />
-                </Grid>
-
-                <Grid size={{ xs: 12 }}>
-                  <Stack direction="row" spacing={1} justifyContent="flex-end">
-                    <Button
-                      variant="outlined"
-                      disabled={interviewSaving}
-                      onClick={() => setInterviewForm({ interview_date: "", status: "sent", place: "", notes: "" })}
-                    >
-                      Nueva entrevista
-                    </Button>
-                    <Button
-                      variant="contained"
-                      disabled={interviewSaving || !interviewForm.interview_date}
-                      onClick={saveInterview}
-                    >
-                      Guardar
-                    </Button>
-                  </Stack>
-                </Grid>
-              </Grid>
-            </Paper>
-
             <Paper variant="outlined" sx={{ borderRadius: 2, overflow: "hidden" }}>
               <Table size="small">
                 <TableHead>
@@ -2936,42 +3253,29 @@ export default function StudentDetailPage() {
                     <TableCell>Estado</TableCell>
                     <TableCell>Lugar</TableCell>
                     <TableCell>Notas</TableCell>
-                    <TableCell align="right">Acciones</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {interviews.map((i) => (
-                    <TableRow key={i.id} hover>
+                    <TableRow
+                      key={i.id}
+                      hover
+                      sx={{ cursor: "pointer" }}
+                      onClick={() => startEditInterview(i)}
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") startEditInterview(i);
+                      }}
+                    >
                       <TableCell sx={{ whiteSpace: "nowrap" }}>{formatDateDMY(i.interview_date)}</TableCell>
                       <TableCell>{interviewStatusChip(i.status)}</TableCell>
                       <TableCell>{i.place ?? "-"}</TableCell>
                       <TableCell>{i.notes ?? ""}</TableCell>
-                      <TableCell align="right">
-                        <Stack direction="row" spacing={1} justifyContent="flex-end">
-                          <Button
-                            size="small"
-                            onClick={() =>
-                              setInterviewForm({
-                                id: i.id,
-                                interview_date: fmtDate(i.interview_date),
-                                status: (i.status ?? "sent") as any,
-                                place: i.place ?? "",
-                                notes: i.notes ?? "",
-                              })
-                            }
-                          >
-                            Editar
-                          </Button>
-                          <Button size="small" color="error" onClick={() => deleteInterview(i.id)}>
-                            Eliminar
-                          </Button>
-                        </Stack>
-                      </TableCell>
                     </TableRow>
                   ))}
                   {interviews.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={5} align="center" sx={{ py: 4, color: "text.secondary" }}>
+                      <TableCell colSpan={4} align="center" sx={{ py: 4, color: "text.secondary" }}>
                         No hay entrevistas
                       </TableCell>
                     </TableRow>
@@ -2982,13 +3286,108 @@ export default function StudentDetailPage() {
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setInterviewsOpen(false)}>Cerrar</Button>
+          <Button onClick={closeInterviewsDialog}>Cerrar</Button>
         </DialogActions>
       </Dialog>
 
-      {/* Invitaciones: listado completo + CRUD */}
+      {/* Entrevistas: formulario en popup independiente */}
+      <Dialog open={interviewFormOpen} onClose={closeInterviewForm} fullWidth maxWidth="sm">
+        <DialogTitle>{interviewForm.id ? "Editar entrevista" : "Nueva entrevista"}</DialogTitle>
+        <DialogContent dividers>
+          <Grid container spacing={2}>
+            <Grid size={{ xs: 12, md: 4 }}>
+              <DateTextField
+                label="Fecha"
+                size="small"
+                fullWidth
+                value={interviewForm.interview_date}
+                onChange={(nextIso) => setInterviewForm((f) => ({ ...f, interview_date: nextIso }))}
+                placeholder="dd/mm/aaaa"
+              />
+            </Grid>
+            <Grid size={{ xs: 12, md: 6 }}>
+              <TextField
+                label="Estado"
+                select
+                size="small"
+                fullWidth
+                value={interviewForm.status}
+                onChange={(e) =>
+                  setInterviewForm((f) => ({
+                    ...f,
+                    status: e.target.value as "sent" | "attended" | "no_show",
+                  }))
+                }
+              >
+                <MenuItem value="sent">Enviada</MenuItem>
+                <MenuItem value="attended">Asistida</MenuItem>
+                <MenuItem value="no_show">No asistió</MenuItem>
+              </TextField>
+            </Grid>
+            <Grid size={{ xs: 12 }}>
+              <TextField
+                label="Lugar"
+                size="small"
+                fullWidth
+                value={interviewForm.place}
+                onChange={(e) => setInterviewForm((f) => ({ ...f, place: e.target.value }))}
+              />
+            </Grid>
+            <Grid size={{ xs: 12 }}>
+              <TextField
+                label="Notas"
+                size="small"
+                fullWidth
+                multiline
+                minRows={2}
+                value={interviewForm.notes}
+                onChange={(e) => setInterviewForm((f) => ({ ...f, notes: e.target.value }))}
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button variant="outlined" onClick={closeInterviewForm} disabled={interviewSaving}>
+            Cancelar
+          </Button>
+          {interviewForm.id ? (
+            <Button
+              variant="outlined"
+              color="error"
+              onClick={() =>
+                requestRecordDelete({
+                  kind: "interview",
+                  id: interviewForm.id!,
+                  label: interviewForm.interview_date
+                    ? `la entrevista del ${formatDateDMY(interviewForm.interview_date)}`
+                    : "la entrevista seleccionada",
+                })
+              }
+              disabled={interviewSaving}
+            >
+              Eliminar
+            </Button>
+          ) : null}
+          <Button
+            variant="contained"
+            onClick={saveInterview}
+            disabled={interviewSaving || !interviewForm.interview_date}
+          >
+            Guardar
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Invitaciones: listado completo */}
       <Dialog open={invitationsOpen} onClose={closeInvitationsDialog} fullWidth maxWidth="md">
-        <DialogTitle>Invitaciones</DialogTitle>
+        <DialogTitle>
+          <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
+            <Typography variant="h6">Invitaciones ({invitations.length})</Typography>
+            <Button variant="outlined" onClick={startCreateInvitation}>
+              Agregar
+            </Button>
+          </Stack>
+        </DialogTitle>
         <DialogContent dividers>
           <Stack spacing={2}>
             <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
@@ -3005,129 +3404,6 @@ export default function StudentDetailPage() {
               </Stack>
             </Paper>
 
-            <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
-              {!invitationFormMode ? (
-                <Stack spacing={1}>
-                  <Stack direction="row" justifyContent="space-between" alignItems="center">
-                    <Typography variant="subtitle2">Acciones</Typography>
-                    <Button variant="outlined" onClick={startCreateInvitation}>
-                      Nueva invitación
-                    </Button>
-                  </Stack>
-                  <Typography variant="body2" color="text.secondary">
-                    Presiona NUEVA INVITACIÓN o edita una existente para mostrar el formulario.
-                  </Typography>
-                </Stack>
-              ) : (
-                <>
-                  <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                    {invitationFormMode === "edit" ? "Editar invitación" : "Nueva invitación"}
-                  </Typography>
-                  <Grid container spacing={2}>
-                    <Grid size={{ xs: 12, md: 6 }}>
-                      <TextField
-                        label="Vacante"
-                        select
-                        size="small"
-                        fullWidth
-                        disabled={invitationFormMode === "edit"}
-                        value={invitationForm.vacancy_id}
-                        onChange={(e) => setInvitationForm((f) => ({ ...f, vacancy_id: e.target.value }))}
-                      >
-                        {vacancies
-                          .filter((v) => v.status === "open")
-                          .map((v) => (
-                            <MenuItem key={v.id} value={String(v.id)}>
-                              {v.title} — {companyName.get(v.company_id) || `ID #${v.company_id}`}
-                            </MenuItem>
-                          ))}
-                      </TextField>
-                    </Grid>
-
-                    <Grid size={{ xs: 12, md: 6 }}>
-                      <TextField
-                        label="Estado"
-                        select
-                        size="small"
-                        fullWidth
-                        disabled={invitationFormMode === "create"}
-                        value={invitationForm.status}
-                        onChange={(e) => setInvitationForm((f) => ({ ...f, status: e.target.value as any }))}
-                      >
-                        <MenuItem value="sent">Enviada</MenuItem>
-                        <MenuItem value="accepted">Aceptada</MenuItem>
-                        <MenuItem value="rejected">Rechazada</MenuItem>
-                        <MenuItem value="expired">Expirada</MenuItem>
-                      </TextField>
-                    </Grid>
-
-                    <Grid size={{ xs: 12, md: 6 }}>
-                      <DateTextField
-                        label="Fecha envío"
-                        size="small"
-                        fullWidth
-                        value={invitationForm.sent_at}
-                        onChange={(nextIso) => setInvitationForm((f) => ({ ...f, sent_at: nextIso }))}
-                        placeholder="dd/mm/aaaa"
-                      />
-                    </Grid>
-
-                    <Grid size={{ xs: 12, md: 6 }}>
-                      <DateTextField
-                        label="Fecha respuesta"
-                        size="small"
-                        fullWidth
-                        disabled={invitationFormMode === "create"}
-                        value={invitationForm.responded_at}
-                        onChange={(nextIso) => setInvitationForm((f) => ({ ...f, responded_at: nextIso }))}
-                        placeholder="dd/mm/aaaa"
-                      />
-                    </Grid>
-
-                    {invitationFormMode === "create" && (
-                      <Grid size={{ xs: 12 }}>
-                        <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems={{ xs: "flex-start", sm: "center" }}>
-                          <FormControlLabel
-                            control={
-                              <Checkbox
-                                checked={invitationNotify.email}
-                                onChange={(e) => setInvitationNotify((n) => ({ ...n, email: e.target.checked }))}
-                              />
-                            }
-                            label="Notificar por Email"
-                          />
-                          <FormControlLabel
-                            control={
-                              <Checkbox
-                                checked={invitationNotify.whatsapp}
-                                onChange={(e) => setInvitationNotify((n) => ({ ...n, whatsapp: e.target.checked }))}
-                              />
-                            }
-                            label="Notificar por WhatsApp"
-                          />
-                        </Stack>
-                      </Grid>
-                    )}
-
-                    <Grid size={{ xs: 12 }}>
-                      <Stack direction="row" spacing={1} justifyContent="flex-end">
-                        <Button variant="outlined" disabled={invitationSaving} onClick={cancelInvitationForm}>
-                          Cancelar
-                        </Button>
-                        <Button
-                          variant="contained"
-                          disabled={invitationSaving || (invitationFormMode === "create" && !invitationForm.vacancy_id)}
-                          onClick={saveInvitation}
-                        >
-                          Guardar
-                        </Button>
-                      </Stack>
-                    </Grid>
-                  </Grid>
-                </>
-              )}
-            </Paper>
-
             <Paper variant="outlined" sx={{ borderRadius: 2, overflow: "hidden" }}>
               <Table size="small">
                 <TableHead>
@@ -3137,32 +3413,30 @@ export default function StudentDetailPage() {
                     <TableCell>Estado</TableCell>
                     <TableCell sx={{ whiteSpace: "nowrap" }}>Enviada</TableCell>
                     <TableCell sx={{ whiteSpace: "nowrap" }}>Respuesta</TableCell>
-                    <TableCell align="right">Acciones</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {invitations.map((inv) => (
-                    <TableRow key={inv.id} hover>
+                    <TableRow
+                      key={inv.id}
+                      hover
+                      sx={{ cursor: "pointer" }}
+                      onClick={() => startEditInvitation(inv)}
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") startEditInvitation(inv);
+                      }}
+                    >
                       <TableCell>{inv.vacancy_title}</TableCell>
                       <TableCell>{inv.company_name}</TableCell>
                       <TableCell>{statusChip(inv.status)}</TableCell>
                       <TableCell sx={{ whiteSpace: "nowrap" }}>{formatDateDMY(inv.sent_at)}</TableCell>
                       <TableCell sx={{ whiteSpace: "nowrap" }}>{formatDateDMY(inv.responded_at)}</TableCell>
-                      <TableCell align="right">
-                        <Stack direction="row" spacing={1} justifyContent="flex-end">
-                          <Button size="small" onClick={() => startEditInvitation(inv)}>
-                            Editar
-                          </Button>
-                          <Button size="small" color="error" onClick={() => deleteInvitation(inv.id)}>
-                            Eliminar
-                          </Button>
-                        </Stack>
-                      </TableCell>
                     </TableRow>
                   ))}
                   {invitations.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={6} align="center" sx={{ py: 4, color: "text.secondary" }}>
+                      <TableCell colSpan={5} align="center" sx={{ py: 4, color: "text.secondary" }}>
                         No hay invitaciones
                       </TableCell>
                     </TableRow>
@@ -3174,6 +3448,129 @@ export default function StudentDetailPage() {
         </DialogContent>
         <DialogActions>
           <Button onClick={closeInvitationsDialog}>Cerrar</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Invitaciones: formulario en popup independiente */}
+      <Dialog open={invitationFormOpen} onClose={cancelInvitationForm} fullWidth maxWidth="md">
+        <DialogTitle>
+          {invitationFormMode === "edit" ? "Editar invitación" : "Nueva invitación"}
+        </DialogTitle>
+        <DialogContent dividers>
+          <Grid container spacing={2}>
+            <Grid size={{ xs: 12, md: 6 }}>
+              <TextField
+                label="Vacante"
+                select
+                size="small"
+                fullWidth
+                disabled={invitationFormMode === "edit"}
+                value={invitationForm.vacancy_id}
+                onChange={(e) => setInvitationForm((f) => ({ ...f, vacancy_id: e.target.value }))}
+              >
+                {vacancies
+                  .filter((v) => invitationFormMode === "edit" || v.status === "open")
+                  .map((v) => (
+                    <MenuItem key={v.id} value={String(v.id)}>
+                      {v.title} — {companyName.get(v.company_id) || `ID #${v.company_id}`}
+                    </MenuItem>
+                  ))}
+              </TextField>
+            </Grid>
+            <Grid size={{ xs: 12, md: 6 }}>
+              <TextField
+                label="Estado"
+                select
+                size="small"
+                fullWidth
+                disabled={invitationFormMode === "create"}
+                value={invitationForm.status}
+                onChange={(e) =>
+                  setInvitationForm((f) => ({ ...f, status: e.target.value as InvitationRow["status"] }))
+                }
+              >
+                <MenuItem value="sent">Enviada</MenuItem>
+                <MenuItem value="accepted">Aceptada</MenuItem>
+                <MenuItem value="rejected">Rechazada</MenuItem>
+                <MenuItem value="expired">Expirada</MenuItem>
+              </TextField>
+            </Grid>
+            <Grid size={{ xs: 12, md: 6 }}>
+              <DateTextField
+                label="Fecha envío"
+                size="small"
+                fullWidth
+                value={invitationForm.sent_at}
+                onChange={(nextIso) => setInvitationForm((f) => ({ ...f, sent_at: nextIso }))}
+                placeholder="dd/mm/aaaa"
+              />
+            </Grid>
+            <Grid size={{ xs: 12, md: 6 }}>
+              <DateTextField
+                label="Fecha respuesta"
+                size="small"
+                fullWidth
+                disabled={invitationFormMode === "create"}
+                value={invitationForm.responded_at}
+                onChange={(nextIso) => setInvitationForm((f) => ({ ...f, responded_at: nextIso }))}
+                placeholder="dd/mm/aaaa"
+              />
+            </Grid>
+            {invitationFormMode === "create" ? (
+              <Grid size={{ xs: 12 }}>
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems={{ xs: "flex-start", sm: "center" }}>
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={invitationNotify.email}
+                        onChange={(e) => setInvitationNotify((n) => ({ ...n, email: e.target.checked }))}
+                      />
+                    }
+                    label="Notificar por Email"
+                  />
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={invitationNotify.whatsapp}
+                        onChange={(e) => setInvitationNotify((n) => ({ ...n, whatsapp: e.target.checked }))}
+                      />
+                    }
+                    label="Notificar por WhatsApp"
+                  />
+                </Stack>
+              </Grid>
+            ) : null}
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button variant="outlined" disabled={invitationSaving} onClick={cancelInvitationForm}>
+            Cancelar
+          </Button>
+          {invitationFormMode === "edit" && invitationForm.id ? (
+            <Button
+              variant="outlined"
+              color="error"
+              disabled={invitationSaving}
+              onClick={() =>
+                requestRecordDelete({
+                  kind: "invitation",
+                  id: invitationForm.id!,
+                  label: invitationForm.vacancy_id
+                    ? `la invitación de la vacante seleccionada`
+                    : "la invitación seleccionada",
+                })
+              }
+            >
+              Eliminar
+            </Button>
+          ) : null}
+          <Button
+            variant="contained"
+            disabled={invitationSaving || (invitationFormMode === "create" && !invitationForm.vacancy_id)}
+            onClick={saveInvitation}
+          >
+            Guardar
+          </Button>
         </DialogActions>
       </Dialog>
 
@@ -3214,8 +3611,12 @@ export default function StudentDetailPage() {
                       <TableRow
                         key={p.id}
                         hover
-                        onClick={() => openViewPracticeForm(p)}
+                        onClick={() => openEditPracticeForm(p)}
                         sx={{ cursor: "pointer" }}
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") openEditPracticeForm(p);
+                        }}
                       >
                         <TableCell>{p.expediente}</TableCell>
                         <TableCell>{p.itinerary_name || p.course_code || "-"}</TableCell>
@@ -3687,9 +4088,17 @@ export default function StudentDetailPage() {
                 variant="contained"
                 color="error"
                 disabled={practiceSaving || !practiceForm.id}
-                onClick={() => {
-                  if (practiceForm.id) void deletePractice(practiceForm.id);
-                }}
+                onClick={() =>
+                  practiceForm.id
+                    ? requestRecordDelete({
+                        kind: "practice",
+                        id: practiceForm.id,
+                        label: practiceForm.expediente
+                          ? `la práctica del expediente ${practiceForm.expediente}`
+                          : "la práctica seleccionada",
+                      })
+                    : undefined
+                }
               >
                 Eliminar práctica
               </Button>
@@ -3722,392 +4131,399 @@ export default function StudentDetailPage() {
         </DialogActions>
       </Dialog>
 
-      {/* Contrataciones: listado completo + CRUD */}
+      {/* Contrataciones: listado completo */}
       <Dialog open={contractsOpen} onClose={closeContractsDialog} fullWidth maxWidth="lg">
-        <DialogTitle>Contrataciones ({contracts.length})</DialogTitle>
-        <DialogContent dividers>
-          <Stack spacing={2}>
-            <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
-              {!contractFormMode ? (
-                <Stack spacing={1}>
-                  <Stack direction="row" justifyContent="space-between" alignItems="center">
-                    <Typography variant="subtitle2">Acciones</Typography>
-                    <Button variant="outlined" onClick={startCreateContract}>
-                      Nueva contratación
-                    </Button>
-                  </Stack>
-                  <Typography variant="body2" color="text.secondary">
-                    Presiona NUEVA CONTRATACIÓN o edita una existente para mostrar el formulario.
-                  </Typography>
-                </Stack>
-              ) : (
-                <>
-                  <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                    {contractFormMode === "edit" ? "Editar contratación" : "Nueva contratación"}
-                  </Typography>
-                  <Grid container spacing={2}>
-                    <Grid size={{ xs: 12, md: 4 }}>
-                      <TextField
-                        select
-                        label="Expediente"
-                        size="small"
-                        fullWidth
-                        value={contractForm.expediente}
-                        onChange={(e) => setContractForm((f) => ({ ...f, expediente: e.target.value }))}
-                      >
-                        <MenuItem value="">
-                          <em>Selecciona expediente</em>
-                        </MenuItem>
-                        {enrolledCourses.map((c) => (
-                          <MenuItem key={c.expediente} value={c.expediente}>
-                            {`${c.expediente} · ${c.itinerary_name || c.course_code}`}
-                          </MenuItem>
-                        ))}
-                      </TextField>
-                    </Grid>
-                    <Grid size={{ xs: 12, md: 4 }}>
-                      <TextField
-                        select
-                        label="Sector"
-                        size="small"
-                        fullWidth
-                        value={contractForm.sector_id}
-                        onChange={(e) => setContractForm((f) => ({ ...f, sector_id: e.target.value }))}
-                      >
-                        <MenuItem value="">
-                          <em>Selecciona sector</em>
-                        </MenuItem>
-                        {contractSectorOptions.map((sector) => (
-                          <MenuItem key={sector.id} value={String(sector.id)}>
-                            {sector.sector_name}
-                          </MenuItem>
-                        ))}
-                      </TextField>
-                    </Grid>
-                    <Grid size={{ xs: 12, md: 4 }}>
-                      <TextField
-                        label="Puesto"
-                        size="small"
-                        fullWidth
-                        value={contractForm.position}
-                        onChange={(e) => setContractForm((f) => ({ ...f, position: e.target.value }))}
-                      />
-                    </Grid>
-
-                    <Grid size={{ xs: 12, md: 6 }}>
-                      <TextField
-                        select
-                        label="Nombre comercial de empresa"
-                        size="small"
-                        fullWidth
-                        value={contractForm.company_name}
-                        onChange={(e) =>
-                          setContractForm((f) => ({
-                            ...f,
-                            company_name: e.target.value,
-                            company_fiscal_name: "",
-                            company_id: "",
-                            company_cif: "",
-                          }))
-                        }
-                      >
-                        <MenuItem value="">
-                          <em>Selecciona nombre comercial</em>
-                        </MenuItem>
-                        {contractCompanyNameOptions.map((nameOption) => (
-                          <MenuItem key={nameOption} value={nameOption}>
-                            {nameOption}
-                          </MenuItem>
-                        ))}
-                      </TextField>
-                    </Grid>
-                    <Grid size={{ xs: 12, md: 6 }}>
-                      <TextField
-                        select
-                        label="Nombre fiscal de empresa"
-                        size="small"
-                        fullWidth
-                        disabled={!contractForm.company_name}
-                        value={contractForm.company_fiscal_name}
-                        onChange={(e) => {
-                          const nextFiscalName = e.target.value;
-                          const matchedCompany = contractCompaniesForSelectedName.find(
-                            (c) => (c.fiscal_name ?? "").trim() === nextFiscalName
-                          );
-                          setContractForm((f) => ({
-                            ...f,
-                            company_fiscal_name: nextFiscalName,
-                            company_id: matchedCompany ? String(matchedCompany.id) : "",
-                            company_cif: matchedCompany?.cif ?? "",
-                          }));
-                        }}
-                      >
-                        <MenuItem value="">
-                          <em>Selecciona nombre fiscal</em>
-                        </MenuItem>
-                        {contractFiscalNameOptions.map((fiscalNameOption) => (
-                          <MenuItem key={fiscalNameOption} value={fiscalNameOption}>
-                            {fiscalNameOption}
-                          </MenuItem>
-                        ))}
-                      </TextField>
-                    </Grid>
-                    <Grid size={{ xs: 12, md: 6 }}>
-                      <TextField
-                        label="CIF empresa"
-                        size="small"
-                        fullWidth
-                        value={contractForm.company_cif}
-                        InputProps={{ readOnly: true }}
-                      />
-                    </Grid>
-                    <Grid size={{ xs: 12, md: 6 }}>
-                      <TextField
-                        label="ID empresa"
-                        size="small"
-                        fullWidth
-                        value={selectedContractCompanyId ? String(selectedContractCompanyId) : ""}
-                        InputProps={{ readOnly: true }}
-                      />
-                    </Grid>
-
-                    <Grid size={{ xs: 12, md: 4 }}>
-                      <TextField
-                        select
-                        label="Contrato empresa itinerario"
-                        size="small"
-                        fullWidth
-                        value={contractForm.is_itinerary_company_contract}
-                        onChange={(e) =>
-                          setContractForm((f) => ({
-                            ...f,
-                            is_itinerary_company_contract: e.target.value as (typeof SI_NO_OPTIONS)[number],
-                          }))
-                        }
-                      >
-                        {SI_NO_OPTIONS.map((opt) => (
-                          <MenuItem key={opt} value={opt}>
-                            {opt}
-                          </MenuItem>
-                        ))}
-                      </TextField>
-                    </Grid>
-                    <Grid size={{ xs: 12, md: 4 }}>
-                      <TextField
-                        select
-                        label="Código de contrato laboral"
-                        size="small"
-                        fullWidth
-                        value={contractForm.contract_code}
-                        onChange={(e) => setContractForm((f) => ({ ...f, contract_code: e.target.value }))}
-                      >
-                        <MenuItem value="">
-                          <em>Selecciona código</em>
-                        </MenuItem>
-                        {contractCodeOptions.map((codeOption) => (
-                          <MenuItem key={codeOption.code} value={String(codeOption.code)}>
-                            {`${codeOption.code} · ${codeOption.contract_type}`}
-                          </MenuItem>
-                        ))}
-                      </TextField>
-                    </Grid>
-                    <Grid size={{ xs: 12, md: 4 }}>
-                      <TextField
-                        label="Tipo de contrato"
-                        size="small"
-                        fullWidth
-                        value={selectedContractCodeItem?.contract_type ?? ""}
-                        InputProps={{ readOnly: true }}
-                      />
-                    </Grid>
-                    <Grid size={{ xs: 12, md: 4 }}>
-                      <TextField
-                        label="Jornada"
-                        size="small"
-                        fullWidth
-                        value={selectedContractCodeItem?.workday ?? ""}
-                        InputProps={{ readOnly: true }}
-                      />
-                    </Grid>
-                    <Grid size={{ xs: 12, md: 4 }}>
-                      <TextField
-                        label="Contratación"
-                        size="small"
-                        fullWidth
-                        value={selectedContractCodeItem?.hiring_mode ?? ""}
-                        InputProps={{ readOnly: true }}
-                      />
-                    </Grid>
-                    <Grid size={{ xs: 12, md: 4 }}>
-                      <TextField
-                        select
-                        label="Adjunta contrato"
-                        size="small"
-                        fullWidth
-                        value={contractForm.attached_contract}
-                        onChange={(e) =>
-                          setContractForm((f) => ({
-                            ...f,
-                            attached_contract: e.target.value as (typeof SI_NO_OPTIONS)[number],
-                          }))
-                        }
-                      >
-                        {SI_NO_OPTIONS.map((opt) => (
-                          <MenuItem key={opt} value={opt}>
-                            {opt}
-                          </MenuItem>
-                        ))}
-                      </TextField>
-                    </Grid>
-                    <Grid size={{ xs: 12, md: 4 }}>
-                      <TextField
-                        select
-                        label="Adjunta vida laboral"
-                        size="small"
-                        fullWidth
-                        value={contractForm.attached_work_life}
-                        onChange={(e) =>
-                          setContractForm((f) => ({
-                            ...f,
-                            attached_work_life: e.target.value as (typeof SI_NO_OPTIONS)[number],
-                          }))
-                        }
-                      >
-                        {SI_NO_OPTIONS.map((opt) => (
-                          <MenuItem key={opt} value={opt}>
-                            {opt}
-                          </MenuItem>
-                        ))}
-                      </TextField>
-                    </Grid>
-                    <Grid size={{ xs: 12, md: 6 }}>
-                      <DateTextField
-                        label="Fecha inicio"
-                        size="small"
-                        fullWidth
-                        value={contractForm.start_date}
-                        onChange={(nextIso) => setContractForm((f) => ({ ...f, start_date: nextIso }))}
-                        placeholder="dd/mm/aaaa"
-                      />
-                    </Grid>
-                    <Grid size={{ xs: 12, md: 6 }}>
-                      <DateTextField
-                        label="Fecha fin"
-                        size="small"
-                        fullWidth
-                        value={contractForm.end_date}
-                        onChange={(nextIso) => setContractForm((f) => ({ ...f, end_date: nextIso }))}
-                        placeholder="dd/mm/aaaa"
-                      />
-                    </Grid>
-                    <Grid size={{ xs: 12 }}>
-                      <TextField
-                        label="Observaciones"
-                        size="small"
-                        fullWidth
-                        multiline
-                        minRows={2}
-                        value={contractForm.observations}
-                        onChange={(e) => setContractForm((f) => ({ ...f, observations: e.target.value }))}
-                      />
-                    </Grid>
-
-                    <Grid size={{ xs: 12 }}>
-                      <Stack direction="row" spacing={1} justifyContent="flex-end">
-                        <Button variant="outlined" disabled={contractSaving} onClick={cancelContractForm}>
-                          Cancelar
-                        </Button>
-                        <Button
-                          variant="contained"
-                          disabled={contractSaving || !contractForm.expediente.trim() || !contractForm.start_date}
-                          onClick={saveContract}
-                        >
-                          Guardar
-                        </Button>
-                      </Stack>
-                    </Grid>
-                  </Grid>
-                </>
-              )}
-            </Paper>
-
-            <Paper variant="outlined" sx={{ borderRadius: 2 }}>
-              <Box sx={{ overflowX: "auto" }}>
-                <Table size="small" sx={{ minWidth: 1700 }}>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Expediente</TableCell>
-                      <TableCell>Empresa</TableCell>
-                      <TableCell>Sector</TableCell>
-                      <TableCell>Puesto</TableCell>
-                      <TableCell>Contrato empresa itinerario</TableCell>
-                      <TableCell>Código contrato</TableCell>
-                      <TableCell>Adjunta contrato</TableCell>
-                      <TableCell>Adjunta vida laboral</TableCell>
-                      <TableCell sx={{ whiteSpace: "nowrap" }}>Fecha inicio</TableCell>
-                      <TableCell sx={{ whiteSpace: "nowrap" }}>Fecha fin</TableCell>
-                      <TableCell>Observaciones</TableCell>
-                      <TableCell align="right">Acciones</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {contractsSorted.map((c) => (
-                      <TableRow key={c.id} hover>
-                        <TableCell>{c.expediente ?? "-"}</TableCell>
-                        <TableCell>
-                          <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                            {c.company_name ?? "-"}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            {c.company_cif ?? "-"}
-                          </Typography>
-                        </TableCell>
-                        <TableCell>{c.sector_name ?? (c.sector_id != null ? contractSectorNameById.get(c.sector_id) : "") ?? "-"}</TableCell>
-                        <TableCell>{c.position ?? "-"}</TableCell>
-                        <TableCell>{normalizeSiNoText(c.is_itinerary_company_contract)}</TableCell>
-                        <TableCell>
-                          {c.contract_code != null
-                            ? `${c.contract_code} · ${
-                                contractCodeByCode.get(c.contract_code)?.contract_type ?? ""
-                              }`.trim()
-                            : "-"}
-                        </TableCell>
-                        <TableCell>{normalizeSiNoText(c.attached_contract)}</TableCell>
-                        <TableCell>{normalizeSiNoText(c.attached_work_life)}</TableCell>
-                        <TableCell sx={{ whiteSpace: "nowrap" }}>{formatDateDMY(c.start_date)}</TableCell>
-                        <TableCell sx={{ whiteSpace: "nowrap" }}>{formatDateDMY(c.end_date)}</TableCell>
-                        <TableCell>
-                          <Typography variant="caption" color="text.secondary">
-                            {c.observations ?? ""}
-                          </Typography>
-                        </TableCell>
-                        <TableCell align="right">
-                          <Stack direction="row" spacing={1} justifyContent="flex-end">
-                            <Button size="small" onClick={() => startEditContract(c)}>
-                              Editar
-                            </Button>
-                            <Button size="small" color="error" onClick={() => deleteContract(c.id)}>
-                              Eliminar
-                            </Button>
-                          </Stack>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {contracts.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={12} align="center" sx={{ py: 4, color: "text.secondary" }}>
-                          No hay contrataciones
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </Box>
-            </Paper>
+        <DialogTitle>
+          <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
+            <Typography variant="h6">Contrataciones ({contracts.length})</Typography>
+            <Button variant="outlined" onClick={startCreateContract}>
+              Agregar
+            </Button>
           </Stack>
+        </DialogTitle>
+        <DialogContent dividers>
+          <Paper variant="outlined" sx={{ borderRadius: 2 }}>
+            <Box sx={{ overflowX: "auto" }}>
+              <Table size="small" sx={{ minWidth: 1700 }}>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Expediente</TableCell>
+                    <TableCell>Empresa</TableCell>
+                    <TableCell>Sector</TableCell>
+                    <TableCell>Puesto</TableCell>
+                    <TableCell>Contrato empresa itinerario</TableCell>
+                    <TableCell>Código contrato</TableCell>
+                    <TableCell>Adjunta contrato</TableCell>
+                    <TableCell>Adjunta vida laboral</TableCell>
+                    <TableCell sx={{ whiteSpace: "nowrap" }}>Fecha inicio</TableCell>
+                    <TableCell sx={{ whiteSpace: "nowrap" }}>Fecha fin</TableCell>
+                    <TableCell>Observaciones</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {contractsSorted.map((c) => (
+                    <TableRow
+                      key={c.id}
+                      hover
+                      sx={{ cursor: "pointer" }}
+                      onClick={() => startEditContract(c)}
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") startEditContract(c);
+                      }}
+                    >
+                      <TableCell>{c.expediente ?? "-"}</TableCell>
+                      <TableCell>
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                          {c.company_name ?? "-"}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {c.company_cif ?? "-"}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        {c.sector_name ??
+                          (c.sector_id != null ? contractSectorNameById.get(c.sector_id) : "") ??
+                          "-"}
+                      </TableCell>
+                      <TableCell>{c.position ?? "-"}</TableCell>
+                      <TableCell>{normalizeSiNoText(c.is_itinerary_company_contract)}</TableCell>
+                      <TableCell>
+                        {c.contract_code != null
+                          ? `${c.contract_code} · ${contractCodeByCode.get(c.contract_code)?.contract_type ?? ""}`.trim()
+                          : "-"}
+                      </TableCell>
+                      <TableCell>{normalizeSiNoText(c.attached_contract)}</TableCell>
+                      <TableCell>{normalizeSiNoText(c.attached_work_life)}</TableCell>
+                      <TableCell sx={{ whiteSpace: "nowrap" }}>{formatDateDMY(c.start_date)}</TableCell>
+                      <TableCell sx={{ whiteSpace: "nowrap" }}>{formatDateDMY(c.end_date)}</TableCell>
+                      <TableCell>
+                        <Typography variant="caption" color="text.secondary">
+                          {c.observations ?? ""}
+                        </Typography>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {contracts.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={11} align="center" sx={{ py: 4, color: "text.secondary" }}>
+                        No hay contrataciones
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </Box>
+          </Paper>
         </DialogContent>
         <DialogActions>
           <Button onClick={closeContractsDialog}>Cerrar</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Contrataciones: formulario en popup independiente */}
+      <Dialog open={contractFormOpen} onClose={cancelContractForm} fullWidth maxWidth="lg">
+        <DialogTitle>{contractFormMode === "edit" ? "Editar contratación" : "Nueva contratación"}</DialogTitle>
+        <DialogContent dividers>
+          <Grid container spacing={2}>
+            <Grid size={{ xs: 12, md: 4 }}>
+              <TextField
+                select
+                label="Expediente"
+                size="small"
+                fullWidth
+                value={contractForm.expediente}
+                onChange={(e) => setContractForm((f) => ({ ...f, expediente: e.target.value }))}
+              >
+                <MenuItem value="">
+                  <em>Selecciona expediente</em>
+                </MenuItem>
+                {enrolledCourses.map((c) => (
+                  <MenuItem key={c.expediente} value={c.expediente}>
+                    {`${c.expediente} · ${c.itinerary_name || c.course_code}`}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+            <Grid size={{ xs: 12, md: 4 }}>
+              <TextField
+                select
+                label="Sector"
+                size="small"
+                fullWidth
+                value={contractForm.sector_id}
+                onChange={(e) => setContractForm((f) => ({ ...f, sector_id: e.target.value }))}
+              >
+                <MenuItem value="">
+                  <em>Selecciona sector</em>
+                </MenuItem>
+                {contractSectorOptions.map((sector) => (
+                  <MenuItem key={sector.id} value={String(sector.id)}>
+                    {sector.sector_name}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+            <Grid size={{ xs: 12, md: 4 }}>
+              <TextField
+                label="Puesto"
+                size="small"
+                fullWidth
+                value={contractForm.position}
+                onChange={(e) => setContractForm((f) => ({ ...f, position: e.target.value }))}
+              />
+            </Grid>
+
+            <Grid size={{ xs: 12, md: 6 }}>
+              <TextField
+                select
+                label="Nombre comercial de empresa"
+                size="small"
+                fullWidth
+                value={contractForm.company_name}
+                onChange={(e) =>
+                  setContractForm((f) => ({
+                    ...f,
+                    company_name: e.target.value,
+                    company_fiscal_name: "",
+                    company_id: "",
+                    company_cif: "",
+                  }))
+                }
+              >
+                <MenuItem value="">
+                  <em>Selecciona nombre comercial</em>
+                </MenuItem>
+                {contractCompanyNameOptions.map((nameOption) => (
+                  <MenuItem key={nameOption} value={nameOption}>
+                    {nameOption}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+            <Grid size={{ xs: 12, md: 6 }}>
+              <TextField
+                select
+                label="Nombre fiscal de empresa"
+                size="small"
+                fullWidth
+                disabled={!contractForm.company_name}
+                value={contractForm.company_fiscal_name}
+                onChange={(e) => {
+                  const nextFiscalName = e.target.value;
+                  const matchedCompany = contractCompaniesForSelectedName.find(
+                    (c) => (c.fiscal_name ?? "").trim() === nextFiscalName
+                  );
+                  setContractForm((f) => ({
+                    ...f,
+                    company_fiscal_name: nextFiscalName,
+                    company_id: matchedCompany ? String(matchedCompany.id) : "",
+                    company_cif: matchedCompany?.cif ?? "",
+                  }));
+                }}
+              >
+                <MenuItem value="">
+                  <em>Selecciona nombre fiscal</em>
+                </MenuItem>
+                {contractFiscalNameOptions.map((fiscalNameOption) => (
+                  <MenuItem key={fiscalNameOption} value={fiscalNameOption}>
+                    {fiscalNameOption}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+            <Grid size={{ xs: 12, md: 6 }}>
+              <TextField
+                label="CIF empresa"
+                size="small"
+                fullWidth
+                value={contractForm.company_cif}
+                InputProps={{ readOnly: true }}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, md: 6 }}>
+              <TextField
+                label="ID empresa"
+                size="small"
+                fullWidth
+                value={selectedContractCompanyId ? String(selectedContractCompanyId) : ""}
+                InputProps={{ readOnly: true }}
+              />
+            </Grid>
+
+            <Grid size={{ xs: 12, md: 4 }}>
+              <TextField
+                select
+                label="Contrato empresa itinerario"
+                size="small"
+                fullWidth
+                value={contractForm.is_itinerary_company_contract}
+                onChange={(e) =>
+                  setContractForm((f) => ({
+                    ...f,
+                    is_itinerary_company_contract: e.target.value as (typeof SI_NO_OPTIONS)[number],
+                  }))
+                }
+              >
+                {SI_NO_OPTIONS.map((opt) => (
+                  <MenuItem key={opt} value={opt}>
+                    {opt}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+            <Grid size={{ xs: 12, md: 4 }}>
+              <TextField
+                select
+                label="Código de contrato laboral"
+                size="small"
+                fullWidth
+                value={contractForm.contract_code}
+                onChange={(e) => setContractForm((f) => ({ ...f, contract_code: e.target.value }))}
+              >
+                <MenuItem value="">
+                  <em>Selecciona código</em>
+                </MenuItem>
+                {contractCodeOptions.map((codeOption) => (
+                  <MenuItem key={codeOption.code} value={String(codeOption.code)}>
+                    {`${codeOption.code} · ${codeOption.contract_type}`}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+            <Grid size={{ xs: 12, md: 4 }}>
+              <TextField
+                label="Tipo de contrato"
+                size="small"
+                fullWidth
+                value={selectedContractCodeItem?.contract_type ?? ""}
+                InputProps={{ readOnly: true }}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, md: 4 }}>
+              <TextField
+                label="Jornada"
+                size="small"
+                fullWidth
+                value={selectedContractCodeItem?.workday ?? ""}
+                InputProps={{ readOnly: true }}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, md: 4 }}>
+              <TextField
+                label="Contratación"
+                size="small"
+                fullWidth
+                value={selectedContractCodeItem?.hiring_mode ?? ""}
+                InputProps={{ readOnly: true }}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, md: 4 }}>
+              <TextField
+                select
+                label="Adjunta contrato"
+                size="small"
+                fullWidth
+                value={contractForm.attached_contract}
+                onChange={(e) =>
+                  setContractForm((f) => ({
+                    ...f,
+                    attached_contract: e.target.value as (typeof SI_NO_OPTIONS)[number],
+                  }))
+                }
+              >
+                {SI_NO_OPTIONS.map((opt) => (
+                  <MenuItem key={opt} value={opt}>
+                    {opt}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+            <Grid size={{ xs: 12, md: 4 }}>
+              <TextField
+                select
+                label="Adjunta vida laboral"
+                size="small"
+                fullWidth
+                value={contractForm.attached_work_life}
+                onChange={(e) =>
+                  setContractForm((f) => ({
+                    ...f,
+                    attached_work_life: e.target.value as (typeof SI_NO_OPTIONS)[number],
+                  }))
+                }
+              >
+                {SI_NO_OPTIONS.map((opt) => (
+                  <MenuItem key={opt} value={opt}>
+                    {opt}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+            <Grid size={{ xs: 12, md: 4 }}>
+              <DateTextField
+                label="Fecha inicio"
+                size="small"
+                fullWidth
+                value={contractForm.start_date}
+                onChange={(nextIso) => setContractForm((f) => ({ ...f, start_date: nextIso }))}
+                placeholder="dd/mm/aaaa"
+              />
+            </Grid>
+            <Grid size={{ xs: 12, md: 4 }}>
+              <DateTextField
+                label="Fecha fin"
+                size="small"
+                fullWidth
+                value={contractForm.end_date}
+                onChange={(nextIso) => setContractForm((f) => ({ ...f, end_date: nextIso }))}
+                placeholder="dd/mm/aaaa"
+              />
+            </Grid>
+            <Grid size={{ xs: 12, md: 4 }}>
+              <TextField
+                label="Observaciones"
+                size="small"
+                fullWidth
+                multiline
+                minRows={2}
+                value={contractForm.observations}
+                onChange={(e) => setContractForm((f) => ({ ...f, observations: e.target.value }))}
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button variant="outlined" disabled={contractSaving} onClick={cancelContractForm}>
+            Cancelar
+          </Button>
+          {contractFormMode === "edit" && contractForm.id ? (
+            <Button
+              variant="outlined"
+              color="error"
+              disabled={contractSaving}
+              onClick={() =>
+                requestRecordDelete({
+                  kind: "contract",
+                  id: contractForm.id!,
+                  label: contractForm.expediente
+                    ? `la contratación del expediente ${contractForm.expediente}`
+                    : "la contratación seleccionada",
+                })
+              }
+            >
+              Eliminar
+            </Button>
+          ) : null}
+          <Button
+            variant="contained"
+            disabled={
+              contractSaving || !contractFormMode || !contractForm.expediente.trim() || !contractForm.start_date
+            }
+            onClick={saveContract}
+          >
+            Guardar
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>
