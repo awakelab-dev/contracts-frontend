@@ -41,6 +41,10 @@ type MenuItem = {
   to: string;
   text: string;
   icon: string;
+  children?: Array<{
+    to: string;
+    text: string;
+  }>;
 };
 
 const menu: MenuItem[] = [
@@ -55,7 +59,15 @@ const menu: MenuItem[] = [
   { to: "/import", text: "IMPORTACIÓN", icon: iconImportacion },
   { to: "/emails", text: "PLANTILLAS EMAIL", icon: iconPlantillasEmail },
   { to: "/liquidacion", text: "LIQUIDACIÓN", icon: iconLiquidacion },
-  { to: "/reports", text: "INFORMES", icon: iconInformes },
+  {
+    to: "/reports",
+    text: "INFORMES",
+    icon: iconInformes,
+    children: [
+      { to: "/reports/indicadores", text: "Indicadores de Inserción y Actividad" },
+      { to: "/reports/inserciones", text: "Inserciones" },
+    ],
+  },
   { to: "/settings", text: "CONFIGURACIÓN", icon: iconConfiguracion },
 ];
 
@@ -84,11 +96,13 @@ function SidebarIcon({ src, alt }: { src: string; alt: string }) {
 }
 
 export default function DashboardLayout({ children }: { children?: React.ReactNode }) {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const [loggingOut, setLoggingOut] = React.useState(false);
-  const navigate = useNavigate();
-  const location = useLocation();
+  const [reportsOpen, setReportsOpen] = React.useState(() => isPathSelected(location.pathname, "/reports"));
   const { user, logout } = useAuth();
+  const isInsercionesRoute = isPathSelected(location.pathname, "/reports/inserciones");
 
   const handleLogout = async () => {
     try {
@@ -113,56 +127,171 @@ export default function DashboardLayout({ children }: { children?: React.ReactNo
       >
         <List disablePadding>
           {menu.map((item) => {
-            const selected = isPathSelected(location.pathname, item.to);
+            if (!item.children?.length) {
+              const selected = isPathSelected(location.pathname, item.to);
+
+              return (
+                <ListItem key={item.to} disablePadding sx={{ mb: 1 }}>
+                  <ListItemButton
+                    selected={selected}
+                    onClick={() => {
+                      navigate(item.to);
+                      setMobileOpen(false);
+                    }}
+                    sx={{
+                      minHeight: 56,
+                      px: 1.4,
+                      borderRadius: 0.8,
+                      border: "1px solid",
+                      borderColor: selected ? "primary.main" : "rgba(35, 58, 86, 0.24)",
+                      bgcolor: selected ? "primary.main" : "#f9fafb",
+                      color: selected ? "common.white" : "secondary.main",
+                      "&.Mui-selected": {
+                        bgcolor: "primary.main",
+                        color: "common.white",
+                        borderColor: "primary.main",
+                      },
+                      "&:hover": {
+                        bgcolor: "primary.main",
+                        color: "common.white",
+                        borderColor: "primary.main",
+                      },
+                      "&.Mui-selected:hover": {
+                        bgcolor: "primary.main",
+                        color: "common.white",
+                        borderColor: "primary.main",
+                      },
+                      "&.Mui-selected .sidebar-menu-icon, &:hover .sidebar-menu-icon": {
+                        filter: "brightness(0) invert(1)",
+                      },
+                    }}
+                  >
+                    <ListItemIcon sx={{ minWidth: 48, color: "inherit" }}>
+                      <SidebarIcon src={item.icon} alt={item.text} />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary={item.text}
+                      primaryTypographyProps={{
+                        fontSize: 14,
+                        lineHeight: 1.15,
+                        fontWeight: selected ? 700 : 500,
+                      }}
+                    />
+                  </ListItemButton>
+                </ListItem>
+              );
+            }
+
+            const groupSelected = item.children.some((child) => isPathSelected(location.pathname, child.to));
+            const selected = groupSelected || isPathSelected(location.pathname, item.to);
 
             return (
-              <ListItem key={item.to} disablePadding sx={{ mb: 1 }}>
-                <ListItemButton
-                  selected={selected}
-                  onClick={() => {
-                    navigate(item.to);
-                    setMobileOpen(false);
-                  }}
-                  sx={{
-                    minHeight: 56,
-                    px: 1.4,
-                    borderRadius: 0.8,
-                    border: "1px solid",
-                    borderColor: selected ? "primary.main" : "rgba(35, 58, 86, 0.24)",
-                    bgcolor: selected ? "primary.main" : "#f9fafb",
-                    color: selected ? "common.white" : "secondary.main",
-                    "&.Mui-selected": {
-                      bgcolor: "primary.main",
-                      color: "common.white",
-                      borderColor: "primary.main",
-                    },
-                    "&:hover": {
-                      bgcolor: "primary.main",
-                      color: "common.white",
-                      borderColor: "primary.main",
-                    },
-                    "&.Mui-selected:hover": {
-                      bgcolor: "primary.main",
-                      color: "common.white",
-                      borderColor: "primary.main",
-                    },
-                    "&.Mui-selected .sidebar-menu-icon, &:hover .sidebar-menu-icon": {
-                      filter: "brightness(0) invert(1)",
-                    },
+              <ListItem key={item.to} disablePadding sx={{ mb: 1, display: "block" }}>
+                <Box
+                  onFocusCapture={() => setReportsOpen(true)}
+                  onBlurCapture={(event) => {
+                    const nextFocused = event.relatedTarget;
+                    if (nextFocused instanceof Node && event.currentTarget.contains(nextFocused)) return;
+                    setReportsOpen(false);
                   }}
                 >
-                  <ListItemIcon sx={{ minWidth: 48, color: "inherit" }}>
-                    <SidebarIcon src={item.icon} alt={item.text} />
-                  </ListItemIcon>
-                  <ListItemText
-                    primary={item.text}
-                    primaryTypographyProps={{
-                      fontSize: 14,
-                      lineHeight: 1.15,
-                      fontWeight: selected ? 700 : 500,
+                  <ListItemButton
+                    selected={selected}
+                    onClick={() => setReportsOpen((open) => !open)}
+                    sx={{
+                      minHeight: 56,
+                      px: 1.4,
+                      borderRadius: 0.8,
+                      border: "1px solid",
+                      borderColor: selected ? "primary.main" : "rgba(35, 58, 86, 0.24)",
+                      bgcolor: selected ? "primary.main" : "#f9fafb",
+                      color: selected ? "common.white" : "secondary.main",
+                      "&.Mui-selected": {
+                        bgcolor: "primary.main",
+                        color: "common.white",
+                        borderColor: "primary.main",
+                      },
+                      "&:hover": {
+                        bgcolor: "primary.main",
+                        color: "common.white",
+                        borderColor: "primary.main",
+                      },
+                      "&.Mui-selected:hover": {
+                        bgcolor: "primary.main",
+                        color: "common.white",
+                        borderColor: "primary.main",
+                      },
+                      "&.Mui-selected .sidebar-menu-icon, &:hover .sidebar-menu-icon": {
+                        filter: "brightness(0) invert(1)",
+                      },
                     }}
-                  />
-                </ListItemButton>
+                  >
+                    <ListItemIcon sx={{ minWidth: 48, color: "inherit" }}>
+                      <SidebarIcon src={item.icon} alt={item.text} />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary={item.text}
+                      primaryTypographyProps={{
+                        fontSize: 14,
+                        lineHeight: 1.15,
+                        fontWeight: selected ? 700 : 500,
+                      }}
+                    />
+                  </ListItemButton>
+
+                  {reportsOpen ? (
+                    <List disablePadding sx={{ mt: 0.75, pl: 6.25 }}>
+                      {item.children.map((child) => {
+                        const childSelected = isPathSelected(location.pathname, child.to);
+                        return (
+                          <ListItem key={child.to} disablePadding sx={{ mb: 0.75 }}>
+                            <ListItemButton
+                              selected={childSelected}
+                              onClick={() => {
+                                navigate(child.to);
+                                setMobileOpen(false);
+                              }}
+                              sx={{
+                                minHeight: 42,
+                                px: 1.25,
+                                py: 0.75,
+                                borderRadius: 0.8,
+                                border: "1px solid",
+                                borderColor: childSelected ? "primary.main" : "rgba(35, 58, 86, 0.2)",
+                                bgcolor: childSelected ? "primary.main" : "#f9fafb",
+                                color: childSelected ? "common.white" : "secondary.main",
+                                "&.Mui-selected": {
+                                  bgcolor: "primary.main",
+                                  color: "common.white",
+                                  borderColor: "primary.main",
+                                },
+                                "&:hover": {
+                                  bgcolor: "primary.main",
+                                  color: "common.white",
+                                  borderColor: "primary.main",
+                                },
+                                "&.Mui-selected:hover": {
+                                  bgcolor: "primary.main",
+                                  color: "common.white",
+                                  borderColor: "primary.main",
+                                },
+                              }}
+                            >
+                              <ListItemText
+                                primary={child.text}
+                                primaryTypographyProps={{
+                                  fontSize: 12,
+                                  lineHeight: 1.2,
+                                  fontWeight: childSelected ? 700 : 500,
+                                }}
+                              />
+                            </ListItemButton>
+                          </ListItem>
+                        );
+                      })}
+                    </List>
+                  ) : null}
+                </Box>
               </ListItem>
             );
           })}
@@ -284,9 +413,43 @@ export default function DashboardLayout({ children }: { children?: React.ReactNo
           {drawer}
         </Drawer>
       </Box>
-      <Box component="main" sx={{ flexGrow: 1, p: { xs: 2, sm: 3 } }}>
-        <Toolbar />
-        {children ?? <Outlet />}
+      <Box
+        component="main"
+        sx={{
+          flexGrow: 1,
+          p: { xs: 2, sm: 3 },
+          minWidth: 0,
+          ...(isInsercionesRoute
+            ? {
+                display: "flex",
+                flexDirection: "column",
+                height: "100dvh",
+                minHeight: 0,
+                overflow: "hidden",
+                boxSizing: "border-box",
+              }
+            : {
+                overflowX: "hidden",
+              }),
+        }}
+      >
+        <Toolbar sx={isInsercionesRoute ? { flexShrink: 0 } : undefined} />
+        <Box
+          sx={
+            isInsercionesRoute
+              ? {
+                  flex: 1,
+                  minHeight: 0,
+                  minWidth: 0,
+                  overflow: "hidden",
+                  display: "flex",
+                  flexDirection: "column",
+                }
+              : undefined
+          }
+        >
+          {children ?? <Outlet />}
+        </Box>
       </Box>
     </Box>
   );

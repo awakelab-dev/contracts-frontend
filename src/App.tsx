@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import DashboardLayout from "./layouts/DashboardLayout";
 import DashboardPage from "./pages/DashboardPage";
 import StudentsListPage from "./pages/StudentsListPage";
@@ -12,6 +12,7 @@ import InterviewsListPage from "./pages/InterviewsListPage";
 import ImportPage from "./pages/ImportPage";
 import EmailTemplatesPage from "./pages/EmailTemplatesPage";
 import ReportsPage from "./pages/ReportsPage";
+import InsercionesReportPage from "./pages/InsercionesReportPage";
 import LiquidacionPage from "./pages/LiquidacionPage";
 import SettingsPage from "./pages/SettingsPage";
 import LoginPage from "./pages/LoginPage";
@@ -52,7 +53,9 @@ export default function App() {
           <Route path="import" element={<ImportPage />} />
           <Route path="emails" element={<EmailTemplatesPage />} />
           <Route path="liquidacion" element={<LiquidacionPage />} />
-          <Route path="reports" element={<ReportsPage />} />
+          <Route path="reports" element={<Navigate to="/reports/indicadores" replace />} />
+          <Route path="reports/indicadores" element={<ReportsPage />} />
+          <Route path="reports/inserciones" element={<InsercionesReportPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
       </Routes>

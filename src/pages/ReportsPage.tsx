@@ -209,8 +209,6 @@ export default function ReportsPage() {
 
   useEffect(() => {
     let cancel = false;
-    setLoading(true);
-    setError(null);
 
     const key = reportType === "monthly" ? monthKey : quarterKey;
 
@@ -293,7 +291,7 @@ export default function ReportsPage() {
               INFORME {tipoInforme}
             </Typography>
             <Typography variant="h5" sx={{ fontWeight: 900, lineHeight: 1.1 }}>
-              Indicadores de inserción y actividad
+              Indicadores de Inserción y Actividad
             </Typography>
             <Typography variant="body2" color="text.secondary">
               {selectedPeriodTitle ? `Periodo: ${selectedPeriodTitle} · ${selectedPeriodRange}` : null}
@@ -311,7 +309,12 @@ export default function ReportsPage() {
               <ToggleButtonGroup
                 value={tipoInforme}
                 exclusive
-                onChange={(_, value) => value && setTipoInforme(value)}
+                onChange={(_, value) => {
+                  if (!value) return;
+                  setLoading(true);
+                  setError(null);
+                  setTipoInforme(value);
+                }}
                 size="small"
               >
                 <ToggleButton value="MENSUAL">MENSUAL</ToggleButton>
@@ -325,7 +328,11 @@ export default function ReportsPage() {
                 size="small"
                 label="Mes"
                 value={monthKey}
-                onChange={(e) => setMonthKey(e.target.value)}
+                onChange={(e) => {
+                  setLoading(true);
+                  setError(null);
+                  setMonthKey(e.target.value);
+                }}
                 sx={{ minWidth: 220 }}
                 disabled={!meta || loading}
               >
@@ -341,7 +348,11 @@ export default function ReportsPage() {
                 size="small"
                 label="Trimestre"
                 value={quarterKey}
-                onChange={(e) => setQuarterKey(e.target.value)}
+                onChange={(e) => {
+                  setLoading(true);
+                  setError(null);
+                  setQuarterKey(e.target.value);
+                }}
                 sx={{ minWidth: 180 }}
                 disabled={!meta || loading}
               >

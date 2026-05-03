@@ -62,6 +62,20 @@ type InvitationRow = {
   company_id: number;
   company_name: string;
 };
+type PracticeTutorRole = "EMHA" | "COMPANY";
+type PracticeTutorRow = {
+  id?: number;
+  tutor_id?: number;
+  dni: string;
+  full_name: string;
+  phone?: string | null;
+  email?: string | null;
+  tutor_of: PracticeTutorRole;
+};
+type PnlRegisteredCompanyRow = {
+  id: number;
+  name: string;
+};
 
 type PracticeRow = {
   id: number;
@@ -72,9 +86,10 @@ type PracticeRow = {
   company_id?: number | null;
   company_name?: string | null;
   company_name_resolved?: string | null;
+  pnl_registered_company_id?: number | null;
+  pnl_registered_company_name?: string | null;
   workplace?: string | null;
-  tutor_emha?: string | null;
-  tutor_company?: string | null;
+  tutors?: PracticeTutorRow[] | null;
   does_practices?: string | null;
   conditions_for_practice?: string | null;
   practice_shift?: string | null;
@@ -223,6 +238,7 @@ const PRACTICE_STATUS_OPTIONS = [
   "NO APTO FORMACION",
   "INSERCION FORMACION",
 ] as const;
+const TUTOR_ROLE_OPTIONS: PracticeTutorRole[] = ["EMHA", "COMPANY"];
 
 type InvitationFormMode = "create" | "edit";
 type EnrolledCourseFormMode = "create" | "edit" | null;
@@ -263,11 +279,11 @@ const EMPTY_PRACTICE_FORM = {
   company_id: "",
   company_name: "",
   company_fiscal_name: "",
+  pnl_registered_company_name: "",
   practice_center_sector: "",
   practice_center_id: "",
   workplace: "",
-  tutor_emha: "",
-  tutor_company: "",
+  tutors: [] as PracticeTutorRow[],
   does_practices: "NO" as (typeof PRACTICE_STATE_OPTIONS)[number],
   conditions_for_practice: "",
   practice_shift: "",
@@ -279,6 +295,12 @@ const EMPTY_PRACTICE_FORM = {
   evaluation: "",
   practice_status: "" as (typeof PRACTICE_STATUS_OPTIONS)[number],
   leave_date: "",
+};
+const EMPTY_PRACTICE_TUTOR_FORM: PracticeTutorRow = {
+  dni: "",
+  full_name: "",
+  phone: "",
+  tutor_of: "EMHA",
 };
 const EMPTY_ENROLLED_COURSE_FORM: EnrolledCourseForm = {
   original_expediente: "",
@@ -416,6 +438,83 @@ function practiceStatusText(value: unknown): string {
   if (!status) return "-";
   if (status === "INSERCION FORMACION") return "INSERCIÓN FORMACIÓN";
   return status;
+}
+
+function parseIsoDate(value: unknown): Date | null {
+  const raw = (value ?? "").toString().trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
+  const parsed = new Date(`${raw}T00:00:00`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function calculatePracticeStatusByDates(
+  startDate: unknown,
+  endDate: unknown,
+  leaveDate: unknown
+): string {
+  const start = parseIsoDate(startDate);
+  const end = parseIsoDate(endDate);
+  const leave = parseIsoDate(leaveDate);
+  if (!start && !end && !leave) return "";
+
+  if (leave && (!end || leave.getTime() < end.getTime())) {
+    return "INTERRUMPIDAS";
+  }
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  if (start && today.getTime() < start.getTime()) {
+    return "PROGRAMADAS";
+  }
+  if (start && end && today.getTime() >= start.getTime() && today.getTime() <= end.getTime()) {
+    return "EN PROGRESO";
+  }
+  if (start && !end && today.getTime() >= start.getTime()) {
+    return "EN PROGRESO";
+  }
+  if (end && today.getTime() > end.getTime()) {
+    return "CULMINADAS";
+  }
+
+  return "";
+}
+
+function normalizeTutorRole(value: unknown): PracticeTutorRole {
+  const role = (value ?? "").toString().trim().toUpperCase();
+  if (role.includes("COMP")) return "COMPANY";
+  return "EMHA";
+}
+
+function normalizeTutorDni(value: unknown): string {
+  return (value ?? "")
+    .toString()
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "")
+    .replace(/[^0-9A-Z]/g, "");
+}
+
+function maskTutorDni(value: unknown): string {
+  const dni = normalizeTutorDni(value);
+  if (!dni) return "-";
+  if (dni.length <= 5) return `${dni.slice(0, 2)}***`;
+  return `${dni.slice(0, 2)}***${dni.slice(-3)}`;
+}
+
+function tutorRoleText(value: PracticeTutorRole): string {
+  return value === "EMHA" ? "EMHA" : "Empresa";
+}
+
+function normalizePracticeTutorRow(row: PracticeTutorRow): PracticeTutorRow {
+  return {
+    id: row.id,
+    tutor_id: row.tutor_id,
+    dni: normalizeTutorDni(row.dni),
+    full_name: (row.full_name ?? "").toString().trim(),
+    phone: ((row.phone ?? "").toString().trim() || "") as string,
+    email: ((row.email ?? "").toString().trim() || "") as string,
+    tutor_of: normalizeTutorRole(row.tutor_of),
+  };
 }
 
 function hasLeaveData(course: EnrolledItineraryCourse): boolean {
@@ -653,11 +752,11 @@ export default function StudentDetailPage() {
     company_id: string;
     company_name: string;
     company_fiscal_name: string;
+    pnl_registered_company_name: string;
     practice_center_sector: string;
     practice_center_id: string;
     workplace: string;
-    tutor_emha: string;
-    tutor_company: string;
+    tutors: PracticeTutorRow[];
     does_practices: (typeof PRACTICE_STATE_OPTIONS)[number];
     conditions_for_practice: string;
     practice_shift: string;
@@ -673,6 +772,10 @@ export default function StudentDetailPage() {
   const [practiceSaving, setPracticeSaving] = useState(false);
   const [practiceCompanyCenters, setPracticeCompanyCenters] = useState<CompanyPracticeCenter[]>([]);
   const [practiceCompanyCentersLoading, setPracticeCompanyCentersLoading] = useState(false);
+  const [practiceTutorForm, setPracticeTutorForm] = useState<PracticeTutorRow>({ ...EMPTY_PRACTICE_TUTOR_FORM });
+  const [practiceTutorDialogOpen, setPracticeTutorDialogOpen] = useState(false);
+  const [practiceTutorsCatalog, setPracticeTutorsCatalog] = useState<PracticeTutorRow[]>([]);
+  const [pnlRegisteredCompanies, setPnlRegisteredCompanies] = useState<PnlRegisteredCompanyRow[]>([]);
 
   // Employment contracts form
   const [contractForm, setContractForm] = useState<{
@@ -911,6 +1014,33 @@ export default function StudentDetailPage() {
       .filter((pc) => (pc.address ?? "").trim().length > 0)
       .sort((a, b) => (a.address ?? "").localeCompare(b.address ?? "", "es", { sensitivity: "base" }));
   }, [practiceCompanyCenters, selectedPracticeCompanyHasComplexLayout]);
+  const practiceTutorDniOptions = useMemo(() => {
+    return Array.from(
+      new Set(
+        practiceTutorsCatalog
+          .map((item) => normalizeTutorDni(item.dni))
+          .filter((dni) => dni.length > 0)
+      )
+    ).sort((a, b) => a.localeCompare(b, "es", { sensitivity: "base" }));
+  }, [practiceTutorsCatalog]);
+  const pnlRegisteredCompanyNameOptions = useMemo(() => {
+    return Array.from(
+      new Set(
+        pnlRegisteredCompanies
+          .map((item) => (item.name ?? "").trim())
+          .filter((name) => name.length > 0)
+      )
+    ).sort((a, b) => a.localeCompare(b, "es", { sensitivity: "base" }));
+  }, [pnlRegisteredCompanies]);
+  const calculatedPracticeStatus = useMemo(
+    () =>
+      calculatePracticeStatusByDates(
+        practiceForm.start_date,
+        practiceForm.end_date,
+        practiceForm.leave_date
+      ),
+    [practiceForm.start_date, practiceForm.end_date, practiceForm.leave_date]
+  );
 
   useEffect(() => {
     setPracticeForm((f) => {
@@ -1110,6 +1240,65 @@ export default function StudentDetailPage() {
     practiceCenterSectorOptions,
     practiceCenterAddressOptions,
   ]);
+
+  useEffect(() => {
+    if (!practiceFormOpen) return;
+
+    let cancel = false;
+    const normalizedDni = normalizeTutorDni(practiceTutorForm.dni);
+    const params: { q?: string; tutor_of?: PracticeTutorRole } = {
+      tutor_of: practiceTutorForm.tutor_of,
+    };
+    if (normalizedDni) {
+      params.q = normalizedDni;
+    }
+
+    api.get<PracticeTutorRow[]>(`/practices/tutors`, { params })
+      .then((res) => {
+        if (cancel) return;
+        const rows = Array.isArray(res.data) ? res.data : [];
+        const normalizedRows = rows.map(normalizePracticeTutorRow);
+        const uniqueRows = normalizedRows.filter((row, index, arr) => {
+          const key = `${row.dni}|${row.tutor_of}`;
+          return arr.findIndex((candidate) => `${candidate.dni}|${candidate.tutor_of}` === key) === index;
+        });
+        setPracticeTutorsCatalog(uniqueRows);
+      })
+      .catch(() => {
+        if (cancel) return;
+        setPracticeTutorsCatalog([]);
+      });
+
+    return () => {
+      cancel = true;
+    };
+  }, [practiceFormOpen, practiceTutorForm.dni, practiceTutorForm.tutor_of]);
+
+  useEffect(() => {
+    if (!practiceFormOpen) return;
+
+    let cancel = false;
+    const query = practiceForm.pnl_registered_company_name.trim();
+    const params: { q?: string } = {};
+    if (query) {
+      params.q = query;
+    }
+
+    api.get<PnlRegisteredCompanyRow[]>(`/practices/pnl-registered-companies`, { params })
+      .then((res) => {
+        if (cancel) return;
+        const rows = Array.isArray(res.data) ? res.data : [];
+        setPnlRegisteredCompanies(rows);
+      })
+      .catch(() => {
+        if (cancel) return;
+        setPnlRegisteredCompanies([]);
+      });
+
+    return () => {
+      cancel = true;
+    };
+  }, [practiceFormOpen, practiceForm.pnl_registered_company_name]);
 
   const districtNameByCode = useMemo(() => {
     const m = new Map<number, string>();
@@ -1756,6 +1945,9 @@ export default function StudentDetailPage() {
 
   function startCreatePractice() {
     setPracticeCompanyCenters([]);
+    setPracticeTutorForm({ ...EMPTY_PRACTICE_TUTOR_FORM });
+    setPracticeTutorsCatalog([]);
+    setPnlRegisteredCompanies([]);
     setPracticeForm({
       ...EMPTY_PRACTICE_FORM,
       expediente: enrolledCourses[0]?.expediente ?? "",
@@ -1766,6 +1958,9 @@ export default function StudentDetailPage() {
     setPracticeFormMode(null);
     setPracticeCompanyCenters([]);
     setPracticeCompanyCentersLoading(false);
+    setPracticeTutorForm({ ...EMPTY_PRACTICE_TUTOR_FORM });
+    setPracticeTutorsCatalog([]);
+    setPnlRegisteredCompanies([]);
     setPracticeForm({
       ...EMPTY_PRACTICE_FORM,
       expediente: enrolledCourses[0]?.expediente ?? "",
@@ -1799,17 +1994,28 @@ export default function StudentDetailPage() {
       companyIdFromPractice != null
         ? companies.find((c) => c.id === companyIdFromPractice) ?? null
         : null;
+    const normalizedTutors = Array.isArray(p.tutors)
+      ? p.tutors
+          .map(normalizePracticeTutorRow)
+          .filter(
+            (tutor) =>
+              tutor.dni.length > 0 ||
+              tutor.full_name.length > 0 ||
+              (tutor.phone ?? "").toString().trim().length > 0
+          )
+      : [];
+    setPracticeTutorForm({ ...EMPTY_PRACTICE_TUTOR_FORM });
     setPracticeForm({
       id: p.id,
       expediente: p.expediente ?? "",
       company_id: companyFromCatalog ? String(companyFromCatalog.id) : p.company_id != null ? String(p.company_id) : "",
       company_name: companyFromCatalog?.name ?? (p.company_name ?? ""),
       company_fiscal_name: companyFromCatalog?.fiscal_name ?? "",
+      pnl_registered_company_name: p.pnl_registered_company_name ?? "",
       practice_center_sector: "",
       practice_center_id: "",
       workplace: p.workplace ?? "",
-      tutor_emha: p.tutor_emha ?? "",
-      tutor_company: p.tutor_company ?? "",
+      tutors: normalizedTutors,
       does_practices:
         (p.does_practices &&
         (PRACTICE_STATE_OPTIONS as readonly string[]).includes(
@@ -1834,6 +2040,110 @@ export default function StudentDetailPage() {
           : "") as (typeof PRACTICE_STATUS_OPTIONS)[number],
       leave_date: fmtDate(p.leave_date),
     });
+  }
+
+  function handlePracticeTutorRoleChange(nextRole: PracticeTutorRole) {
+    setPracticeTutorForm((currentForm) => {
+      const normalizedDni = normalizeTutorDni(currentForm.dni);
+      const match =
+        practiceTutorsCatalog.find(
+          (item) =>
+            normalizeTutorDni(item.dni) === normalizedDni &&
+            normalizeTutorRole(item.tutor_of) === nextRole
+        ) ??
+        null;
+      if (!match) {
+        return {
+          ...currentForm,
+          tutor_of: nextRole,
+        };
+      }
+      return {
+        tutor_id: match.tutor_id ?? match.id,
+        dni: normalizeTutorDni(match.dni),
+        full_name: match.full_name ?? "",
+        phone: match.phone ?? "",
+        email: match.email ?? "",
+        tutor_of: normalizeTutorRole(match.tutor_of),
+      };
+    });
+  }
+
+  function handlePracticeTutorDniChange(value: string) {
+    const normalizedDni = normalizeTutorDni(value);
+    setPracticeTutorForm((currentForm) => {
+      const exactMatch =
+        practiceTutorsCatalog.find(
+          (item) =>
+            normalizeTutorDni(item.dni) === normalizedDni &&
+            normalizeTutorRole(item.tutor_of) === currentForm.tutor_of
+        ) ??
+        practiceTutorsCatalog.find((item) => normalizeTutorDni(item.dni) === normalizedDni) ??
+        null;
+
+      if (!exactMatch) {
+        return {
+          ...currentForm,
+          tutor_id: undefined,
+          dni: normalizedDni,
+        };
+      }
+
+      return {
+        tutor_id: exactMatch.tutor_id ?? exactMatch.id,
+        dni: normalizeTutorDni(exactMatch.dni),
+        full_name: exactMatch.full_name ?? "",
+        phone: exactMatch.phone ?? "",
+        email: exactMatch.email ?? "",
+        tutor_of: normalizeTutorRole(exactMatch.tutor_of),
+      };
+    });
+  }
+  function openPracticeTutorDialog() {
+    setPracticeTutorForm({ ...EMPTY_PRACTICE_TUTOR_FORM });
+    setPracticeTutorDialogOpen(true);
+  }
+
+  function closePracticeTutorDialog() {
+    setPracticeTutorDialogOpen(false);
+    setPracticeTutorForm({ ...EMPTY_PRACTICE_TUTOR_FORM });
+  }
+
+  function addPracticeTutorToList() {
+    const normalizedTutor = normalizePracticeTutorRow(practiceTutorForm);
+    if (!normalizedTutor.dni || !normalizedTutor.full_name) {
+      setActionError("Para agregar un tutor debes completar DNI y Nombre completo.");
+      return;
+    }
+
+    setPracticeForm((currentForm) => {
+      const existingIndex = currentForm.tutors.findIndex(
+        (tutor) =>
+          normalizeTutorDni(tutor.dni) === normalizedTutor.dni &&
+          normalizeTutorRole(tutor.tutor_of) === normalizedTutor.tutor_of
+      );
+      if (existingIndex < 0) {
+        return {
+          ...currentForm,
+          tutors: [...currentForm.tutors, normalizedTutor],
+        };
+      }
+      const updatedTutors = [...currentForm.tutors];
+      updatedTutors[existingIndex] = normalizedTutor;
+      return {
+        ...currentForm,
+        tutors: updatedTutors,
+      };
+    });
+    closePracticeTutorDialog();
+    setPracticeTutorForm({ ...EMPTY_PRACTICE_TUTOR_FORM });
+  }
+
+  function removePracticeTutorFromList(indexToRemove: number) {
+    setPracticeForm((currentForm) => ({
+      ...currentForm,
+      tutors: currentForm.tutors.filter((_, index) => index !== indexToRemove),
+    }));
   }
 
   async function savePractice() {
@@ -1862,6 +2172,23 @@ export default function StudentDetailPage() {
         return;
       }
     }
+    const normalizedTutors = practiceForm.tutors
+      .map(normalizePracticeTutorRow)
+      .filter(
+        (tutor) =>
+          tutor.dni.length > 0 ||
+          tutor.full_name.length > 0 ||
+          (tutor.phone ?? "").toString().trim().length > 0
+      );
+    const hasInvalidTutor = normalizedTutors.some((tutor) => !tutor.dni || !tutor.full_name);
+    if (hasInvalidTutor) {
+      setActionError("Todos los tutores deben tener DNI y Nombre completo.");
+      return;
+    }
+    const uniqueTutors = normalizedTutors.filter((tutor, index, arr) => {
+      const key = `${tutor.dni}|${tutor.tutor_of}`;
+      return arr.findIndex((candidate) => `${candidate.dni}|${candidate.tutor_of}` === key) === index;
+    });
 
     try {
       setActionError(null);
@@ -1873,9 +2200,16 @@ export default function StudentDetailPage() {
         expediente: practiceForm.expediente.trim().toUpperCase(),
         company_id: companyId,
         company_name: resolvedCompanyName,
+        pnl_registered_company_name: practiceForm.pnl_registered_company_name.trim() || null,
         workplace: practiceForm.workplace || null,
-        tutor_emha: practiceForm.tutor_emha || null,
-        tutor_company: practiceForm.tutor_company || null,
+        tutors: uniqueTutors.map((tutor) => ({
+          tutor_id: tutor.tutor_id ?? tutor.id ?? null,
+          dni: tutor.dni,
+          full_name: tutor.full_name,
+          phone: tutor.phone || null,
+          email: tutor.email || null,
+          tutor_of: tutor.tutor_of,
+        })),
         does_practices: practiceForm.does_practices,
         conditions_for_practice: practiceForm.conditions_for_practice || null,
         practice_shift: practiceForm.practice_shift || null,
@@ -1885,7 +2219,7 @@ export default function StudentDetailPage() {
         attendance_days: toIntOrNull(practiceForm.attendance_days),
         schedule: practiceForm.schedule || null,
         evaluation: practiceForm.evaluation || null,
-        practice_status: practiceForm.practice_status || null,
+        practice_status: calculatedPracticeStatus || null,
         leave_date: practiceForm.leave_date || null,
       };
 
@@ -2499,7 +2833,7 @@ export default function StudentDetailPage() {
                         <Typography variant="body2">{student.email ?? "-"}</Typography>
                       )}
                     </InfoRow>
-                    <InfoRow label="TIC">
+                    <InfoRow label="Discapacidad">
                       {editingStudent ? (
                         <TextField
                           select
@@ -3598,6 +3932,7 @@ export default function StudentDetailPage() {
                       <TableCell>Expediente</TableCell>
                       <TableCell>Itinerario</TableCell>
                       <TableCell>Empresa</TableCell>
+                      <TableCell>Tutores</TableCell>
                       <TableCell>Estado</TableCell>
                       <TableCell>Hace prácticas</TableCell>
                       <TableCell sx={{ whiteSpace: "nowrap" }}>Inicio</TableCell>
@@ -3628,6 +3963,28 @@ export default function StudentDetailPage() {
                               "-"}
                           </Typography>
                         </TableCell>
+                        <TableCell>
+                          {Array.isArray(p.tutors) && p.tutors.length > 0 ? (
+                            <Stack spacing={0.25}>
+                              {p.tutors.slice(0, 2).map((tutor, index) => (
+                                <Typography
+                                  key={`${p.id}-${normalizeTutorDni(tutor.dni)}-${index}`}
+                                  variant="caption"
+                                  color="text.secondary"
+                                >
+                                  {`${maskTutorDni(tutor.dni)} · ${tutor.full_name || "-"} · ${tutorRoleText(normalizeTutorRole(tutor.tutor_of))}`}
+                                </Typography>
+                              ))}
+                              {p.tutors.length > 2 ? (
+                                <Typography variant="caption" color="text.secondary">
+                                  {`+${p.tutors.length - 2} más`}
+                                </Typography>
+                              ) : null}
+                            </Stack>
+                          ) : (
+                            "-"
+                          )}
+                        </TableCell>
                         <TableCell>{practiceStatusText(p.practice_status)}</TableCell>
                         <TableCell>{practiceStateText(p.does_practices)}</TableCell>
                         <TableCell sx={{ whiteSpace: "nowrap" }}>{formatDateDMY(p.start_date)}</TableCell>
@@ -3638,7 +3995,7 @@ export default function StudentDetailPage() {
                     ))}
                     {practiceRows.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={9} align="center" sx={{ py: 4, color: "text.secondary" }}>
+                        <TableCell colSpan={10} align="center" sx={{ py: 4, color: "text.secondary" }}>
                           No hay prácticas
                         </TableCell>
                       </TableRow>
@@ -3657,13 +4014,20 @@ export default function StudentDetailPage() {
       {/* Prácticas: formulario en popup independiente */}
       <Dialog open={practiceFormOpen} onClose={closePracticeForm} fullWidth maxWidth="xl">
         <DialogTitle>
-          {practiceFormMode === "create"
-            ? "Nueva práctica"
-            : practiceFormMode === "edit"
-              ? "Editar práctica"
-              : practiceFormMode === "delete"
-                ? "Eliminar práctica"
-                : "Detalle de práctica"}
+          <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
+            <Typography variant="h6">
+              {practiceFormMode === "create"
+                ? "Nueva práctica"
+                : practiceFormMode === "edit"
+                  ? "Editar práctica"
+                  : practiceFormMode === "delete"
+                    ? "Eliminar práctica"
+                    : "Detalle de práctica"}
+            </Typography>
+            <Typography variant="body2" sx={{ fontWeight: 700 }}>
+              {`Estado prácticas: ${calculatedPracticeStatus || "-"}`}
+            </Typography>
+          </Stack>
         </DialogTitle>
         <DialogContent dividers>
           {practiceFormMode === "view" && (
@@ -3682,7 +4046,7 @@ export default function StudentDetailPage() {
             sx={{ border: 0, p: 0, m: 0, minWidth: 0 }}
           >
             <Grid container spacing={2}>
-              <Grid size={{ xs: 12, md: 6 }}>
+              <Grid size={{ xs: 12, md: 3 }}>
                 <TextField
                   select
                   label="Expediente"
@@ -3701,7 +4065,7 @@ export default function StudentDetailPage() {
                   ))}
                 </TextField>
               </Grid>
-              <Grid size={{ xs: 12, md: 3 }}>
+              <Grid size={{ xs: 12, md: 2 }}>
                 <TextField
                   select
                   label="¿Hace prácticas?"
@@ -3722,31 +4086,34 @@ export default function StudentDetailPage() {
                   ))}
                 </TextField>
               </Grid>
-              <Grid size={{ xs: 12, md: 3 }}>
-                <TextField
-                  select
-                  label="Estado prácticas"
-                  size="small"
-                  fullWidth
-                  value={practiceForm.practice_status}
-                  onChange={(e) =>
+              <Grid size={{ xs: 12, md: 7 }}>
+                <Autocomplete
+                  freeSolo
+                  options={pnlRegisteredCompanyNameOptions}
+                  value={practiceForm.pnl_registered_company_name}
+                  inputValue={practiceForm.pnl_registered_company_name}
+                  onChange={(_, value) =>
                     setPracticeForm((f) => ({
                       ...f,
-                      practice_status: e.target.value as (typeof PRACTICE_STATUS_OPTIONS)[number],
+                      pnl_registered_company_name: (value ?? "").toString(),
                     }))
                   }
-                >
-                  <MenuItem value="">
-                    <em>—</em>
-                  </MenuItem>
-                  {PRACTICE_STATUS_OPTIONS.filter(Boolean).map((opt) => (
-                    <MenuItem key={opt} value={opt}>
-                      {practiceStatusText(opt)}
-                    </MenuItem>
-                  ))}
-                </TextField>
+                  onInputChange={(_, value) =>
+                    setPracticeForm((f) => ({
+                      ...f,
+                      pnl_registered_company_name: value,
+                    }))
+                  }
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="Empresa que da de alta las PnL"
+                      size="small"
+                      fullWidth
+                    />
+                  )}
+                />
               </Grid>
-
               <Grid size={{ xs: 12, md: 6 }}>
                 <TextField
                   select
@@ -3800,11 +4167,6 @@ export default function StudentDetailPage() {
                       workplace: "",
                     }));
                   }}
-                  helperText={
-                    !practiceForm.company_name
-                      ? "Selecciona primero el nombre comercial."
-                      : "Selecciona el nombre fiscal asociado al nombre comercial."
-                  }
                 >
                   <MenuItem value="">
                     <em>Selecciona nombre fiscal</em>
@@ -3946,31 +4308,72 @@ export default function StudentDetailPage() {
                       fullWidth
                       value={practiceForm.workplace}
                       onChange={(e) => setPracticeForm((f) => ({ ...f, workplace: e.target.value }))}
-                      helperText="Esta empresa no tiene direcciones cargadas en el catálogo."
                     />
                   </Grid>
                 )}
-
-              <Grid size={{ xs: 12, md: 6 }}>
-                <TextField
-                  label="Tutores de EMHA"
-                  size="small"
-                  fullWidth
-                  value={practiceForm.tutor_emha}
-                  onChange={(e) => setPracticeForm((f) => ({ ...f, tutor_emha: e.target.value }))}
-                />
+              <Grid size={{ xs: 12 }}>
+                <Divider />
               </Grid>
-              <Grid size={{ xs: 12, md: 6 }}>
-                <TextField
-                  label="Tutores de la Empresa"
-                  size="small"
-                  fullWidth
-                  value={practiceForm.tutor_company}
-                  onChange={(e) => setPracticeForm((f) => ({ ...f, tutor_company: e.target.value }))}
-                />
+              <Grid size={{ xs: 12 }}>
+                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                    Tutores
+                  </Typography>
+                  <Button variant="outlined" size="small" onClick={openPracticeTutorDialog}>
+                    Agregar tutor
+                  </Button>
+                </Stack>
+              </Grid>
+              <Grid size={{ xs: 12 }}>
+                <Paper variant="outlined" sx={{ borderRadius: 2, overflow: "hidden" }}>
+                  <Box sx={{ overflowX: "auto" }}>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>DNI</TableCell>
+                          <TableCell>Nombre completo</TableCell>
+                          <TableCell>Tlf</TableCell>
+                          <TableCell>Email</TableCell>
+                          <TableCell>Tutor de</TableCell>
+                          <TableCell align="right">Acciones</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {practiceForm.tutors.length > 0 ? (
+                          practiceForm.tutors.map((tutor, index) => (
+                            <TableRow
+                              key={`${normalizeTutorDni(tutor.dni)}-${normalizeTutorRole(tutor.tutor_of)}-${index}`}
+                            >
+                              <TableCell>{maskTutorDni(tutor.dni)}</TableCell>
+                              <TableCell>{tutor.full_name || "-"}</TableCell>
+                              <TableCell>{tutor.phone || "-"}</TableCell>
+                              <TableCell>{tutor.email || "-"}</TableCell>
+                              <TableCell>{tutorRoleText(normalizeTutorRole(tutor.tutor_of))}</TableCell>
+                              <TableCell align="right">
+                                <Button
+                                  size="small"
+                                  color="error"
+                                  onClick={() => removePracticeTutorFromList(index)}
+                                >
+                                  Quitar
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        ) : (
+                          <TableRow>
+                            <TableCell colSpan={6} align="center" sx={{ py: 2, color: "text.secondary" }}>
+                              No hay tutores agregados
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </Box>
+                </Paper>
               </Grid>
 
-              <Grid size={{ xs: 12, md: 4 }}>
+              <Grid size={{ xs: 12, md: 3 }}>
                 <DateTextField
                   label="Inicio"
                   size="small"
@@ -3980,7 +4383,7 @@ export default function StudentDetailPage() {
                   placeholder="dd/mm/aaaa"
                 />
               </Grid>
-              <Grid size={{ xs: 12, md: 4 }}>
+              <Grid size={{ xs: 12, md: 3 }}>
                 <DateTextField
                   label="Fin"
                   size="small"
@@ -3990,7 +4393,7 @@ export default function StudentDetailPage() {
                   placeholder="dd/mm/aaaa"
                 />
               </Grid>
-              <Grid size={{ xs: 12, md: 4 }}>
+              <Grid size={{ xs: 12, md: 3 }}>
                 <DateTextField
                   label="Fecha baja"
                   size="small"
@@ -4000,8 +4403,7 @@ export default function StudentDetailPage() {
                   placeholder="dd/mm/aaaa"
                 />
               </Grid>
-
-              <Grid size={{ xs: 12, md: 4 }}>
+              <Grid size={{ xs: 12, md: 3 }}>
                 <TextField
                   label="Nº días asistencia"
                   type="number"
@@ -4029,8 +4431,7 @@ export default function StudentDetailPage() {
                   onChange={(e) => setPracticeForm((f) => ({ ...f, conditions_for_practice: e.target.value }))}
                 />
               </Grid>
-
-              <Grid size={{ xs: 12 }}>
+              <Grid size={{ xs: 12, md: 4 }}>
                 <TextField
                   label="Horario"
                   size="small"
@@ -4128,6 +4529,99 @@ export default function StudentDetailPage() {
               </Button>
             </>
           )}
+        </DialogActions>
+      </Dialog>
+      <Dialog open={practiceTutorDialogOpen} onClose={closePracticeTutorDialog} fullWidth maxWidth="md">
+        <DialogTitle>Agregar tutor</DialogTitle>
+        <DialogContent dividers>
+          <Grid container spacing={2}>
+            <Grid size={{ xs: 12, md: 4 }}>
+              <TextField
+                select
+                label="Tutor de"
+                size="small"
+                fullWidth
+                value={practiceTutorForm.tutor_of}
+                onChange={(e) => handlePracticeTutorRoleChange(e.target.value as PracticeTutorRole)}
+              >
+                {TUTOR_ROLE_OPTIONS.map((roleOption) => (
+                  <MenuItem key={roleOption} value={roleOption}>
+                    {tutorRoleText(roleOption)}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+            <Grid size={{ xs: 12, md: 4 }}>
+              <Autocomplete
+                freeSolo
+                options={practiceTutorDniOptions}
+                value={practiceTutorForm.dni}
+                inputValue={practiceTutorForm.dni}
+                onChange={(_, value) => handlePracticeTutorDniChange((value ?? "").toString())}
+                onInputChange={(_, value) => handlePracticeTutorDniChange(value)}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="DNI"
+                    size="small"
+                    fullWidth
+                    required
+                  />
+                )}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, md: 4 }}>
+              <TextField
+                label="Nombre completo"
+                size="small"
+                fullWidth
+                required
+                value={practiceTutorForm.full_name}
+                onChange={(e) =>
+                  setPracticeTutorForm((f) => ({
+                    ...f,
+                    full_name: e.target.value,
+                  }))
+                }
+              />
+            </Grid>
+            <Grid size={{ xs: 12, md: 6 }}>
+              <TextField
+                label="Tlf"
+                size="small"
+                fullWidth
+                value={practiceTutorForm.phone ?? ""}
+                onChange={(e) =>
+                  setPracticeTutorForm((f) => ({
+                    ...f,
+                    phone: e.target.value,
+                  }))
+                }
+              />
+            </Grid>
+            <Grid size={{ xs: 12, md: 6 }}>
+              <TextField
+                label="Email"
+                size="small"
+                fullWidth
+                value={practiceTutorForm.email ?? ""}
+                onChange={(e) =>
+                  setPracticeTutorForm((f) => ({
+                    ...f,
+                    email: e.target.value,
+                  }))
+                }
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button variant="outlined" onClick={closePracticeTutorDialog}>
+            Cancelar
+          </Button>
+          <Button variant="contained" onClick={addPracticeTutorToList}>
+            Agregar
+          </Button>
         </DialogActions>
       </Dialog>
 

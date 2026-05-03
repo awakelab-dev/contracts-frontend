@@ -384,7 +384,7 @@ export default function StudentEditPage() {
             <TextField
               fullWidth
               select
-              label="TIC"
+              label="Discapacidad"
               size="small"
               value={form.tic}
               onChange={(e) => setForm((s) => ({ ...s, tic: e.target.value as StudentForm["tic"] }))}

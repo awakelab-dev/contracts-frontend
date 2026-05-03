@@ -532,7 +532,7 @@ export default function StudentsListPage() {
             </Stack>
             <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
               <TextField
-                label="TIC"
+                label="Discapacidad"
                 select
                 size="small"
                 fullWidth
